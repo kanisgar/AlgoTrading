@@ -3,6 +3,7 @@ import time
 import pytz
 from SmartApi import SmartConnect
 from datetime import datetime, timedelta
+from twilio.rest import Client
 import os
 
 # 🔹 Credentials & Configurations
@@ -11,6 +12,10 @@ PASSWORD = '1611'
 CLIENT_CODE = 'AAAI570791'
 TOTP_SECRET = 'ZXI5JF7SKHJND6W2XCBHYPLEJU'
 LOT_SIZE = 75  # Quantity per lot
+account_sid = 'AC6ef902b81d63731c13b746613aadb2aa'
+auth_token = '06c408e1a82a20ae2b839f2cceac4705'  # Replace with actual token
+current_date = datetime.now().strftime("%Y-%m-%d")
+
 
 # Define Timezones
 finland_tz = pytz.timezone("Europe/Helsinki")  # Laptop time
@@ -18,6 +23,28 @@ india_tz = pytz.timezone("Asia/Kolkata")  # IST timezone
 
 # Initialize SmartConnect
 smart_api = SmartConnect(api_key=API_KEY)
+#For twilio
+client = Client(account_sid, auth_token)
+
+def send_whatsapp_message(message_body):
+    """
+    Sends a WhatsApp message using Twilio API.
+    :param message_body: The message content to send.
+    """
+    recipients = [
+        'whatsapp:+919042528367',  # Recipient 1
+        'whatsapp:+918012991200'   # Recipient 2 (add as many as needed)
+    ]
+    try:
+        message = client.messages.create(
+            from_='whatsapp:+14155238886',  # Twilio sandbox number
+            #to='whatsapp:+919042528367',
+            to=recipients,  
+            body=message_body
+        )
+        print(f"WhatsApp Message Sent: {message_body}")
+    except Exception as e:
+        print(f"Failed to send message: {e}")
 
 def get_current_ist_time():
     """Returns the current time in IST."""
@@ -89,13 +116,14 @@ def place_order(symbol, action, quantity, price, symboltoken):
     try:
         order_params = {
             "exchange": "NFO",
-            "variety": "NORMAL",
+            "variety": "STOPLOSS",
             "symboltoken": symboltoken,
             "tradingsymbol": symbol,
-            "transactiontype": action,  # 'BUY' or 'SELL'
+            "transactiontype": action,  # 'BUY' or 'EXIT'
             "quantity": quantity,
             "price": price,
-            "ordertype": "LIMIT",
+            "triggerprice":price,
+            "ordertype": "STOPLOSS_LIMIT",
             "producttype": "INTRADAY",
             "duration": "DAY"
         }
@@ -189,6 +217,7 @@ def run_strategy():
         print("🕒 Tracking day high from 9:55 to 10:00 AM IST...")
         high_ce, high_pe = track_highs_until_1000(ce_symbol, ce_symbol_token, pe_symbol, pe_symbol_token)
 
+
     else:
         # Manual input if script runs after 10:00 AM
         print("⏳ Script started after 10:00 AM. Manual input required.")
@@ -209,6 +238,7 @@ def run_strategy():
             return  # Exit script immediately
 
     print("📈 Monitoring breakout after 10:01 AM...")
+    send_whatsapp_message(f"🔔{current_date}: 10:00 AM Highs Locked:\n📈 CE({ce_symbol}): {high_ce}\n📉 PE({pe_symbol}): {high_pe}.\nWaiting for Breakout after 10:01 AM")
 
     active_trade = None  # Track active CE or PE trade
     ce_order_id = None
@@ -216,6 +246,7 @@ def run_strategy():
     target_order_id = None
     stop_loss_order_id = None
     pending_order_logged = False
+    exit_order_logged = False
 
     while True:
         ce_ltp = get_ltp(ce_symbol, ce_symbol_token)
@@ -225,58 +256,70 @@ def run_strategy():
             if ce_ltp and ce_ltp >= high_ce * 0.97:
                 print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
                 ce_order_id = place_order(ce_symbol, "BUY", LOT_SIZE, high_ce + 0.20, ce_symbol_token)
+                send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}")
                 active_trade = "CE"
             elif pe_ltp and pe_ltp >= high_pe * 0.97:
                 print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
                 pe_order_id = place_order(pe_symbol, "BUY", LOT_SIZE, high_pe + 0.20, pe_symbol_token)
+                send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}")
                 active_trade = "PE"
 
         else:  # Active trade exists, monitor SL & Target exit
             trade_order_id = ce_order_id if active_trade == "CE" else pe_order_id
             order_status = get_order_status_from_book(trade_order_id)
 
-            if order_status not in ["COMPLETE", "EXECUTED"]:
+            if order_status not in ["complete", "executed"]:
                 if not pending_order_logged:  # Print only once
                     print(f"🚨 Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
+                    send_whatsapp_message(f"🚨{current_date}: Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
                     pending_order_logged = True
                 continue
 
             pending_order_logged = False
-
-            print(f"✅ Order {trade_order_id} is executed. Proceeding with exit orders.")
+            if not exit_order_logged:  # Print only once
+               print(f"✅ Order {trade_order_id} is executed. Proceeding with exit orders.")
+               send_whatsapp_message(f"✅{current_date}: Order {trade_order_id} is executed. Proceeding with exit orders.")
+               exit_order_logged = True
 
             trade_symbol = ce_symbol if active_trade == "CE" else pe_symbol
+
             trade_symbol_token = ce_symbol_token if active_trade == "CE" else pe_symbol_token
             trade_ltp = get_ltp(trade_symbol, trade_symbol_token)
             entry_price = high_ce + 0.20 if active_trade == "CE" else high_pe + 0.20
-            target_price = entry_price * 1.15
-            stop_loss_price = entry_price * 0.90
+            target_price_trigger = round(round((entry_price * 1.15) / 0.05) * 0.05, 2)
+            target_price = "{:.2f}".format(target_price_trigger)
+            stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
+            stop_loss_price = "{:.2f}".format(stop_loss_price_trigger)
 
             # If price is near the target, place target order
-            if trade_ltp >= target_price * 0.93 and target_order_id is None:
+            if trade_ltp >= target_price_trigger * 0.93 and target_order_id is None:
                 if stop_loss_order_id:
                     print(f"❌ Cancelling Stop Loss Order as Target is Near")
                     cancel_order(stop_loss_order_id)
                     stop_loss_order_id = None
                 print(f"🎯 Placing Target Order at {target_price}")
-                target_order_id = place_order(trade_symbol, "EXIT", LOT_SIZE, target_price, trade_symbol_token)
+                target_order_id = place_order(trade_symbol, "SELL", LOT_SIZE, target_price, trade_symbol_token)
+                send_whatsapp_message(f"❌{current_date}: Cancelling Stop Loss Order and placing the Target order {trade_symbol} for price : {target_price} ")
 
             # If price reverses and nears the stop-loss, cancel target and place SL order
-            elif trade_ltp <= stop_loss_price * 1.05 and stop_loss_order_id is None:
+            elif trade_ltp <= stop_loss_price_trigger * 1.05 and stop_loss_order_id is None:
                 if target_order_id:
                     print(f"❌ Cancelling Target Order and placing Stop Loss Order at {stop_loss_price}")
                     cancel_order(target_order_id)  # Cancel target order
                     target_order_id = None  # Reset target order ID
-                stop_loss_order_id = place_order(trade_symbol, "EXIT", LOT_SIZE, stop_loss_price, trade_symbol_token)
+                stop_loss_order_id = place_order(trade_symbol, "SELL", LOT_SIZE, stop_loss_price, trade_symbol_token)
+                send_whatsapp_message(f"❌{current_date}:Cancelling Target Order and placing the SL order {trade_symbol} for price : {stop_loss_price} ")
 
             # Exit if target is hit
-            if trade_ltp >= target_price:
+            if trade_ltp >= target_price_trigger:
                 print(f"✅ Target reached, exiting at {trade_ltp}")
+                send_whatsapp_message(f"✅{current_date}: Target reached, exiting at {trade_ltp} for {trade_symbol}")
                 break
 
             # Exit if stop-loss is hit
-            elif trade_ltp <= stop_loss_price:
+            elif trade_ltp <= stop_loss_price_trigger:
                 print(f"✅ Stop Loss triggered, exiting at {trade_ltp}")
+                send_whatsapp_message(f"✅{current_date}: Stop Loss triggered, exiting at {trade_ltp} for {trade_symbol}")
                 break
 
 

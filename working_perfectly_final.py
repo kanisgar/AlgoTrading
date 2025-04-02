@@ -43,6 +43,20 @@ def login():
     else:
         raise Exception(f"❌ Login failed: {session.get('message', 'Unknown error')}")
 
+def get_order_status_from_book(order_id):
+    """
+    Fetch order status from Angel One order book.
+    Returns the order status as a string or "UNKNOWN" if not found.
+    """
+    order_book = smart_api.orderBook()  # Fetch all orders
+    
+    if order_book and order_book.get("data"):  # Ensure we have valid data
+        for order in order_book["data"]:  # Loop through orders
+            if order.get("orderid") == order_id:
+                return order.get("status", "UNKNOWN")  # Return status if found
+    
+    return "UNKNOWN"  # Default if order is not found
+
 def get_nifty_atm():
     """Fetches the nearest ATM strike price for NIFTY."""
     spot_data = smart_api.ltpData("NSE", "NIFTY", "26000")
@@ -176,14 +190,13 @@ def run_strategy():
         high_ce, high_pe = track_highs_until_1000(ce_symbol, ce_symbol_token, pe_symbol, pe_symbol_token)
 
     else:
-        # Manual input if script runs after 10:00 AM and before 08:00 AM next day
+        # Manual input if script runs after 10:00 AM
         print("⏳ Script started after 10:00 AM. Manual input required.")
         atm_strike = int(input("Enter ATM Strike Price: "))
         high_ce = float(input("Enter 10:00 AM High for CE: "))
         high_pe = float(input("Enter 10:00 AM High for PE: "))
 
         expiry_day = get_expiry_day()
-        print(f"The expiry day is {expiry_day}")
         ce_symbol, pe_symbol = get_symbol_for_atm(atm_strike, expiry_day)
 
         ce_symbol_token = get_symbol_token(ce_symbol)
@@ -202,6 +215,7 @@ def run_strategy():
     pe_order_id = None
     target_order_id = None
     stop_loss_order_id = None
+    pending_order_logged = False
 
     while True:
         ce_ltp = get_ltp(ce_symbol, ce_symbol_token)
@@ -218,6 +232,19 @@ def run_strategy():
                 active_trade = "PE"
 
         else:  # Active trade exists, monitor SL & Target exit
+            trade_order_id = ce_order_id if active_trade == "CE" else pe_order_id
+            order_status = get_order_status_from_book(trade_order_id)
+
+            if order_status not in ["COMPLETE", "EXECUTED"]:
+                if not pending_order_logged:  # Print only once
+                    print(f"🚨 Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
+                    pending_order_logged = True
+                continue
+
+            pending_order_logged = False
+
+            print(f"✅ Order {trade_order_id} is executed. Proceeding with exit orders.")
+
             trade_symbol = ce_symbol if active_trade == "CE" else pe_symbol
             trade_symbol_token = ce_symbol_token if active_trade == "CE" else pe_symbol_token
             trade_ltp = get_ltp(trade_symbol, trade_symbol_token)
@@ -233,7 +260,6 @@ def run_strategy():
                     stop_loss_order_id = None
                 print(f"🎯 Placing Target Order at {target_price}")
                 target_order_id = place_order(trade_symbol, "EXIT", LOT_SIZE, target_price, trade_symbol_token)
-                
 
             # If price reverses and nears the stop-loss, cancel target and place SL order
             elif trade_ltp <= stop_loss_price * 1.05 and stop_loss_order_id is None:
