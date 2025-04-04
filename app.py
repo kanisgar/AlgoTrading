@@ -43,6 +43,17 @@ def calculate_quantity_with_risk(entry_price):
     elif total_risk_x_plus_1_lots > risk_max:
         return max_lots * LOT_SIZE  # Return lot * 75 as the quantity
     return def_buy_qty
+    
+def is_market_holiday():
+    holiday_file = "nifty_expiry_holidays.txt"  
+    try:
+        with open(holiday_file, "r") as f:
+            holidays = [line.strip() for line in f.readlines()]
+    except FileNotFoundError:
+        print(f"Warning: {holiday_file} not found. Assuming no holidays.")
+        return False
+    today = datetime.today().strftime("%d%b%y")  # Format like 26Feb25
+    return today in holidays
 
 def send_whatsapp_message(message_body):
     """
@@ -360,4 +371,8 @@ def run_strategy():
 
 # Main execution
 if __name__ == "__main__":
-    run_strategy()
+    if is_market_holiday():
+        send_whatsapp_message(f"🔔:Market holiday on {current_date}. Exiting script.")
+        print("Market holiday today. Exiting script.")
+    else:
+        run_strategy()
