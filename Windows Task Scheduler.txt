@@ -1,0 +1,14 @@
+TASK SCHEDULER COMMANDS
+=======================
+REM TO FIND STATUS OF A TASK
+schtasks /query /tn "Python Try" /fo LIST | findstr /I "Status"
+
+REM TO FIND RUN TASK STATUS OF A JOB
+schtasks /query /tn "Algo 10 AM" /fo LIST /v | findstr /I "Task to Run"
+
+REM TO SEARCH A TASK WITH A KNOWN NAME
+schtasks /query /fo LIST /v | findstr /I "Algo"
+
+REM TO KILL A TASK  (ONLY AS ADMIN) -> REM IS FOR COMMENT
+REM schtasks /delete /tn "Python Try" /f
+

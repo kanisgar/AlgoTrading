@@ -11,7 +11,6 @@ API_KEY = 'I39xpH90'
 PASSWORD = '1611'
 CLIENT_CODE = 'AAAI570791'
 TOTP_SECRET = 'ZXI5JF7SKHJND6W2XCBHYPLEJU'
-LOT_SIZE = 75  # Quantity per lot
 account_sid = 'AC6ef902b81d63731c13b746613aadb2aa'
 auth_token = '06c408e1a82a20ae2b839f2cceac4705'  # Replace with actual token
 current_date = datetime.now().strftime("%Y-%m-%d")
@@ -25,6 +24,25 @@ india_tz = pytz.timezone("Asia/Kolkata")  # IST timezone
 smart_api = SmartConnect(api_key=API_KEY)
 #For twilio
 client = Client(account_sid, auth_token)
+#For Trade
+LOT_SIZE=75
+risk_min=2000
+risk_max=2500
+def_buy_qty=225
+
+def calculate_quantity_with_risk(entry_price):
+    investment_per_lot = entry_price * LOT_SIZE
+    risk_per_lot = investment_per_lot * 0.10  # 10% risk of the investment
+    max_lots = int(risk_max // risk_per_lot)  # We divide the max risk by the risk per lot to find max lots
+    total_investment_x_lots = investment_per_lot * max_lots
+    total_risk_x_lots = risk_per_lot * max_lots
+    total_investment_x_plus_1_lots = investment_per_lot * (max_lots + 1)
+    total_risk_x_plus_1_lots = risk_per_lot * (max_lots + 1)
+    if total_risk_x_lots >= risk_min and total_risk_x_lots <= risk_max:
+        return max_lots * LOT_SIZE
+    elif total_risk_x_plus_1_lots > risk_max:
+        return max_lots * LOT_SIZE  # Return lot * 75 as the quantity
+    return def_buy_qty
 
 def send_whatsapp_message(message_body):
     """
@@ -68,6 +86,7 @@ def login():
     if session.get("status") is True:
         print("✅ Login successful!")
     else:
+        send_whatsapp_message("❌ Login failed:")
         raise Exception(f"❌ Login failed: {session.get('message', 'Unknown error')}")
 
 def get_order_status_from_book(order_id):
@@ -99,10 +118,17 @@ def get_symbol_for_atm(strike_price, expiry_date):
 
 def get_symbol_token(symbol):
     """Fetches the symbol token for a given symbol."""
-    search_response = smart_api.searchScrip("NFO", symbol)
-    if search_response.get("status") is True:
-        return search_response["data"][0]["symboltoken"]
-    raise Exception(f"❌ Failed to get symbol token for {symbol}")
+    try:
+        search_response = smart_api.searchScrip("NFO", symbol)
+        if search_response.get("status") is True:
+            return search_response["data"][0]["symboltoken"]
+        else:
+         send_whatsapp_message(f"❌ Failed to get symbol token for {symbol}")
+         raise Exception(f"❌ Failed to get symbol token for {symbol}")
+    except Exception as e:
+        send_whatsapp_message(f"❌ Failed to get symbol token for {symbol}")
+        raise Exception(f"❌ Failed to get symbol token for {symbol}")
+    
 
 def get_ltp(symbol, symbol_token):
     """Fetches the LTP (Last Traded Price) for the given symbol using symbol token."""
@@ -130,7 +156,8 @@ def place_order(symbol, action, quantity, price, symboltoken):
         order_response = smart_api.placeOrder(order_params)
         return order_response
     except Exception as e:
-        print(f"❌ Failed to place order: {e}")
+        raise Exception(f"❌ Failed to place order: {e}")
+        send_whatsapp_message(f"❌ Failed to place order : {e}")
         return None
 
 def cancel_order(order_id):
@@ -139,6 +166,7 @@ def cancel_order(order_id):
         cancel_response = smart_api.cancelOrder(str(order_id), "NORMAL")
         return cancel_response
     except Exception as e:
+        send_whatsapp_message(f"❌ DO MANUALLY; Failed to cancel order {order_id}: {e}")
         print(f"❌ Failed to cancel order {order_id}: {e}")
         return None
 
@@ -147,16 +175,19 @@ def get_expiry_day():
     today = datetime.today()
     holiday_file = "nifty_expiry_holidays.txt"
     holidays = []
-    
+    # Load holidays from file
     if os.path.exists(holiday_file):
         with open(holiday_file, "r") as file:
-            holidays = [line.strip() for line in file.readlines()]
-
-    expiry_day = today + timedelta(days=(3 - today.weekday()))  # Thursday
-
-    while expiry_day.strftime("%d%b%y") in holidays or expiry_day.weekday() in [5, 6]:  # Weekend check
+            holidays = [line.strip() for line in file.readlines()] 
+    # Find next Thursday (weekday = 3)
+    days_ahead = (3 - today.weekday() + 7) % 7
+    if days_ahead == 0:
+        days_ahead = 7  # Always get *next* Thursday, not today if it's Thursday
+    expiry_day = today + timedelta(days=days_ahead)
+    # Adjust expiry_day if it's a holiday or falls on weekend
+    while expiry_day.strftime("%d%b%y") in holidays or expiry_day.weekday() in [5, 6]:  # 5 = Saturday, 6 = Sunday
         expiry_day -= timedelta(days=1)
-
+        # Keep adjusting until it's a weekday and not a holiday
     return expiry_day
 
 def get_day_high(symbol, symbol_token):
@@ -167,7 +198,8 @@ def get_day_high(symbol, symbol_token):
         day_high = response['data']['high']  # Extract day high from response
         return day_high
     else:
-        print(f"Error fetching data for {symbol}")
+        send_whatsapp_message(f"Error fetching data for {symbol}")
+        raise Exception(f"Error fetching data for {symbol}")
         return None
 
 def track_highs_until_1000(ce_symbol, ce_symbol_token, pe_symbol, pe_symbol_token):
@@ -247,20 +279,23 @@ def run_strategy():
     stop_loss_order_id = None
     pending_order_logged = False
     exit_order_logged = False
+    quantity_buy = 225
 
     while True:
         ce_ltp = get_ltp(ce_symbol, ce_symbol_token)
         pe_ltp = get_ltp(pe_symbol, pe_symbol_token)
 
         if active_trade is None:  # No active trade
-            if ce_ltp and ce_ltp >= high_ce * 0.97:
+            if ce_ltp and ce_ltp >= high_ce * 0.98:
                 print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
-                ce_order_id = place_order(ce_symbol, "BUY", LOT_SIZE, high_ce + 0.20, ce_symbol_token)
+                quantity_buy = calculate_quantity_with_risk(high_ce + 0.20)
+                ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, high_ce + 0.20, ce_symbol_token)
                 send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}")
                 active_trade = "CE"
-            elif pe_ltp and pe_ltp >= high_pe * 0.97:
+            elif pe_ltp and pe_ltp >= high_pe * 0.98:
                 print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
-                pe_order_id = place_order(pe_symbol, "BUY", LOT_SIZE, high_pe + 0.20, pe_symbol_token)
+                quantity_buy = calculate_quantity_with_risk(high_pe + 0.20)
+                pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, high_pe + 0.20, pe_symbol_token)
                 send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}")
                 active_trade = "PE"
 
@@ -298,7 +333,7 @@ def run_strategy():
                     cancel_order(stop_loss_order_id)
                     stop_loss_order_id = None
                 print(f"🎯 Placing Target Order at {target_price}")
-                target_order_id = place_order(trade_symbol, "SELL", LOT_SIZE, target_price, trade_symbol_token)
+                target_order_id = place_order(trade_symbol, "SELL", quantity_buy, target_price, trade_symbol_token)
                 send_whatsapp_message(f"❌{current_date}: Cancelling Stop Loss Order and placing the Target order {trade_symbol} for price : {target_price} ")
 
             # If price reverses and nears the stop-loss, cancel target and place SL order
@@ -307,7 +342,7 @@ def run_strategy():
                     print(f"❌ Cancelling Target Order and placing Stop Loss Order at {stop_loss_price}")
                     cancel_order(target_order_id)  # Cancel target order
                     target_order_id = None  # Reset target order ID
-                stop_loss_order_id = place_order(trade_symbol, "SELL", LOT_SIZE, stop_loss_price, trade_symbol_token)
+                stop_loss_order_id = place_order(trade_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token)
                 send_whatsapp_message(f"❌{current_date}:Cancelling Target Order and placing the SL order {trade_symbol} for price : {stop_loss_price} ")
 
             # Exit if target is hit
