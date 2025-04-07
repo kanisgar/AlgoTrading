@@ -29,6 +29,7 @@ LOT_SIZE=75
 risk_min=2000
 risk_max=2500
 def_buy_qty=225
+holiday_location="C:\Kani_Personal\Automate_Trading\AlgoTrading\\"
 
 def calculate_quantity_with_risk(entry_price):
     investment_per_lot = entry_price * LOT_SIZE
@@ -45,7 +46,7 @@ def calculate_quantity_with_risk(entry_price):
     return def_buy_qty
     
 def is_market_holiday():
-    holiday_file = "nifty_expiry_holidays.txt"  
+    holiday_file = holiday_location + "nifty_expiry_holidays.txt"  
     try:
         with open(holiday_file, "r") as f:
             holidays = [line.strip() for line in f.readlines()]
@@ -174,7 +175,7 @@ def place_order(symbol, action, quantity, price, symboltoken):
 def cancel_order(order_id):
     """Cancel the order by its order ID."""
     try:
-        cancel_response = smart_api.cancelOrder(str(order_id), "NORMAL")
+        cancel_response = smart_api.cancelOrder(str(order_id), "STOPLOSS")
         return cancel_response
     except Exception as e:
         send_whatsapp_message(f"❌ DO MANUALLY; Failed to cancel order {order_id}: {e}")
@@ -184,7 +185,7 @@ def cancel_order(order_id):
 def get_expiry_day():
     """Get the correct expiry day based on holidays and weekends."""
     today = datetime.today()
-    holiday_file = "nifty_expiry_holidays.txt"
+    holiday_file = holiday_location + "nifty_expiry_holidays.txt"
     holidays = []
     # Load holidays from file
     if os.path.exists(holiday_file):

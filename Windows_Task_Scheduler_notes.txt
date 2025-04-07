@@ -12,3 +12,7 @@ schtasks /query /fo LIST /v | findstr /I "Algo"
 REM TO KILL A TASK  (ONLY AS ADMIN) -> REM IS FOR COMMENT
 REM schtasks /delete /tn "Python Try" /f
 
+How to create symbolink link in windows: (ONLY AS ADMIN)
+========================================
+mklink C:\Kani_Personal\Automate_Trading\option_selling_automate\nifty_expiry_holidays.txt C:\Kani_Personal\Automate_Trading\AlgoTrading\nifty_expiry_holidays.txt
+
