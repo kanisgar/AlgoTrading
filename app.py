@@ -14,6 +14,7 @@ TOTP_SECRET = 'ZXI5JF7SKHJND6W2XCBHYPLEJU'
 account_sid = 'AC6ef902b81d63731c13b746613aadb2aa'
 auth_token = '06c408e1a82a20ae2b839f2cceac4705'  # Replace with actual token
 current_date = datetime.now().strftime("%Y-%m-%d")
+refresh_token = None
 
 
 # Define Timezones
@@ -96,10 +97,20 @@ def login():
     totp = pyotp.TOTP(TOTP_SECRET).now()
     session = smart_api.generateSession(CLIENT_CODE, PASSWORD, totp)
     if session.get("status") is True:
+        refresh_token = session["data"]["refreshToken"]
         print("✅ Login successful!")
     else:
         send_whatsapp_message("❌ Login failed:")
         raise Exception(f"❌ Login failed: {session.get('message', 'Unknown error')}")
+
+def is_logged_in(refresh_token):
+    try:
+        response = smart_api.getProfile(refresh_token)
+        # If it returns data, assume logged in
+        return response.get("status") == True
+    except Exception as e:
+        print(f"🔒 Session not active or error occurred: {e}")
+        return False
 
 def get_order_status_from_book(order_id):
     """
@@ -144,6 +155,9 @@ def get_symbol_token(symbol):
 
 def get_ltp(symbol, symbol_token):
     """Fetches the LTP (Last Traded Price) for the given symbol using symbol token."""
+    if not is_logged_in(refresh_token):
+        print("Session expired, re-authenticating before square-off...")
+        login()
     ltp_data = smart_api.ltpData("NFO", symbol, symbol_token)
     if ltp_data.get("status") is True:
         return float(ltp_data["data"]["ltp"])
