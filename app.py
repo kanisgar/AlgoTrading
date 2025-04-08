@@ -1,6 +1,7 @@
 import pyotp
 import time
 import pytz
+import logging
 from SmartApi import SmartConnect
 from datetime import datetime, timedelta
 from twilio.rest import Client
@@ -32,19 +33,48 @@ risk_max=2500
 def_buy_qty=225
 holiday_location="C:\Kani_Personal\Automate_Trading\AlgoTrading\\"
 
+log_path = f"C:/Kani_Personal/Automate_Trading/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.log"
+os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+# Configure logging
+logging.basicConfig(
+    filename=log_path,
+    filemode='a',
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    level=logging.INFO
+)
+
+def log_and_print(message, level="info"):
+    print(message)
+    if level == "info":
+        logging.info(message)
+    elif level == "error":
+        logging.error(message)
+    elif level == "warning":
+        logging.warning(message)
+    elif level == "debug":
+        logging.debug(message)
+
 def calculate_quantity_with_risk(entry_price):
-    investment_per_lot = entry_price * LOT_SIZE
-    risk_per_lot = investment_per_lot * 0.10  # 10% risk of the investment
-    max_lots = int(risk_max // risk_per_lot)  # We divide the max risk by the risk per lot to find max lots
-    total_investment_x_lots = investment_per_lot * max_lots
-    total_risk_x_lots = risk_per_lot * max_lots
-    total_investment_x_plus_1_lots = investment_per_lot * (max_lots + 1)
-    total_risk_x_plus_1_lots = risk_per_lot * (max_lots + 1)
-    if total_risk_x_lots >= risk_min and total_risk_x_lots <= risk_max:
-        return max_lots * LOT_SIZE
-    elif total_risk_x_plus_1_lots > risk_max:
-        return max_lots * LOT_SIZE  # Return lot * 75 as the quantity
-    return def_buy_qty
+    try:
+        investment_per_lot = entry_price * LOT_SIZE
+        risk_per_lot = investment_per_lot * 0.10  # 10% risk of the investment
+        max_lots = int(risk_max // risk_per_lot)  # We divide the max risk by the risk per lot to find max lots
+        total_investment_x_lots = investment_per_lot * max_lots
+        total_risk_x_lots = risk_per_lot * max_lots
+        total_investment_x_plus_1_lots = investment_per_lot * (max_lots + 1)
+        total_risk_x_plus_1_lots = risk_per_lot * (max_lots + 1)
+        if total_risk_x_lots >= risk_min and total_risk_x_lots <= risk_max:
+            return max_lots * LOT_SIZE
+        elif total_risk_x_plus_1_lots > risk_max:
+            return max_lots * LOT_SIZE  # Return lot * 75 as the quantity
+        return def_buy_qty
+    except Exception as e:
+        log_and_print(f"Error in calculate_quantity_with_risk: {e}", "error")
+        return def_buy_qty
+    finally:
+        log_and_print(f"The buy quantity is {def_buy_qty}") 
     
 def is_market_holiday():
     holiday_file = holiday_location + "nifty_expiry_holidays.txt"  
@@ -73,9 +103,9 @@ def send_whatsapp_message(message_body):
             to=recipients,  
             body=message_body
         )
-        print(f"WhatsApp Message Sent: {message_body}")
+        log_and_print(f"WhatsApp Message Sent: {message_body}")
     except Exception as e:
-        print(f"Failed to send message: {e}")
+        log_and_print(f"Failed to send message: {e}")
 
 def get_current_ist_time():
     """Returns the current time in IST."""
@@ -98,18 +128,22 @@ def login():
     session = smart_api.generateSession(CLIENT_CODE, PASSWORD, totp)
     if session.get("status") is True:
         refresh_token = session["data"]["refreshToken"]
-        print("✅ Login successful!")
+        log_and_print("✅ Login successful!")
     else:
         send_whatsapp_message("❌ Login failed:")
+        log_and_print(f"❌ Login failed: {session.get('message', 'Unknown error')}")
         raise Exception(f"❌ Login failed: {session.get('message', 'Unknown error')}")
 
 def is_logged_in(refresh_token):
     try:
         response = smart_api.getProfile(refresh_token)
         # If it returns data, assume logged in
+        stat = response.get("status")
+        #Disabling the below log and print to avoid multiple print statment in logs
+        #log_and_print(f"Inside is_logged_in method and response is {stat}")
         return response.get("status") == True
     except Exception as e:
-        print(f"🔒 Session not active or error occurred: {e}")
+        log_and_print(f"🔒 Session not active or error occurred: {e}")
         return False
 
 def get_order_status_from_book(order_id):
@@ -146,22 +180,27 @@ def get_symbol_token(symbol):
         if search_response.get("status") is True:
             return search_response["data"][0]["symboltoken"]
         else:
+         log_and_print(f"❌ Failed to get symbol token for {symbol}")
          send_whatsapp_message(f"❌ Failed to get symbol token for {symbol}")
          raise Exception(f"❌ Failed to get symbol token for {symbol}")
     except Exception as e:
+        log_and_print(f"❌ Failed to get symbol token for {symbol}")
         send_whatsapp_message(f"❌ Failed to get symbol token for {symbol}")
         raise Exception(f"❌ Failed to get symbol token for {symbol}")
     
 
 def get_ltp(symbol, symbol_token):
     """Fetches the LTP (Last Traded Price) for the given symbol using symbol token."""
-    if not is_logged_in(refresh_token):
-        print("Session expired, re-authenticating before square-off...")
-        login()
-    ltp_data = smart_api.ltpData("NFO", symbol, symbol_token)
-    if ltp_data.get("status") is True:
-        return float(ltp_data["data"]["ltp"])
-    return None
+    try:
+        if not is_logged_in(refresh_token):
+            log_and_print("Session expired, re-authenticating before square-off...")
+            login()
+        ltp_data = smart_api.ltpData("NFO", symbol, symbol_token)
+        if ltp_data.get("status") is True:
+            return float(ltp_data["data"]["ltp"])
+        return None
+    except Exception as e:
+        log_and_print(f"❌ Failed to get LTP for Symbol:{symbol} and Symbol Token:{symbol_token} ")
 
 def place_order(symbol, action, quantity, price, symboltoken):
     """Places a market order for the given symbol."""
@@ -184,6 +223,7 @@ def place_order(symbol, action, quantity, price, symboltoken):
     except Exception as e:
         raise Exception(f"❌ Failed to place order: {e}")
         send_whatsapp_message(f"❌ Failed to place order : {e}")
+        log_and_print(f"❌ Failed to place order : {e}")
         return None
 
 def cancel_order(order_id):
@@ -193,7 +233,7 @@ def cancel_order(order_id):
         return cancel_response
     except Exception as e:
         send_whatsapp_message(f"❌ DO MANUALLY; Failed to cancel order {order_id}: {e}")
-        print(f"❌ Failed to cancel order {order_id}: {e}")
+        log_and_print(f"❌ Failed to cancel order {order_id}: {e}")
         return None
 
 def get_expiry_day():
@@ -246,39 +286,42 @@ def track_highs_until_1000(ce_symbol, ce_symbol_token, pe_symbol, pe_symbol_toke
         if pe_ltp:
             high_pe = max(high_pe, pe_ltp) if pe_ltp > high_pe else high_pe
 
-    print(f"✅ 10:00 AM Highs Locked - CE: {high_ce}, PE: {high_pe}")
+    log_and_print(f"✅ 10:00 AM Highs Locked - CE: {high_ce}, PE: {high_pe}")
     return high_ce, high_pe
 
 def run_strategy():
     """Runs the trading strategy."""
-    print("🔄 Running strategy...")
+    log_and_print("🔄 Running strategy...")
     login()
 
     # Get current IST time
     current_time = get_current_ist_time().strftime("%H:%M")
-    print(f"Current IST time is {current_time}")
+    log_and_print(f"Current IST time is {current_time}")
 
     if "08:00" <= current_time < "10:00":
         # Execute automated flow before 10:00 AM
         wait_until_ist("09:55")  # Wait until 9:55 AM
+        if not is_logged_in(refresh_token):
+            log_and_print("Session expired, re-authenticating before order placing...")
+            login()
         atm_strike = get_nifty_atm()
-        print(f"🎯 9:55 AM ATM Strike Price: {atm_strike}")
+        log_and_print(f"🎯 9:55 AM ATM Strike Price: {atm_strike}")
 
         expiry_day = get_expiry_day()
-        print(f"The expiry day is {expiry_day}")
+        log_and_print(f"The expiry day is {expiry_day}")
         ce_symbol, pe_symbol = get_symbol_for_atm(atm_strike, expiry_day)
 
         ce_symbol_token = get_symbol_token(ce_symbol)
         time.sleep(1)
         pe_symbol_token = get_symbol_token(pe_symbol)
 
-        print("🕒 Tracking day high from 9:55 to 10:00 AM IST...")
+        log_and_print("🕒 Tracking day high from 9:55 to 10:00 AM IST...")
         high_ce, high_pe = track_highs_until_1000(ce_symbol, ce_symbol_token, pe_symbol, pe_symbol_token)
 
 
     else:
         # Manual input if script runs after 10:00 AM
-        print("⏳ Script started after 10:00 AM. Manual input required.")
+        log_and_print("⏳ Script started after 10:00 AM. Manual input required.")
         atm_strike = int(input("Enter ATM Strike Price: "))
         high_ce = float(input("Enter 10:00 AM High for CE: "))
         high_pe = float(input("Enter 10:00 AM High for PE: "))
@@ -292,10 +335,10 @@ def run_strategy():
 
         already_passed = input("Has either CE or PE already crossed the 10:00 AM high? (yes/no): ").strip().lower()
         if already_passed == "yes":
-            print("❌ Trade missed for today. Exiting...")
+            log_and_print("❌ Trade missed for today. Exiting...")
             return  # Exit script immediately
 
-    print("📈 Monitoring breakout after 10:01 AM...")
+    log_and_print("📈 Monitoring breakout after 10:01 AM...")
     send_whatsapp_message(f"🔔{current_date}: 10:00 AM Highs Locked:\n📈 CE({ce_symbol}): {high_ce}\n📉 PE({pe_symbol}): {high_pe}.\nWaiting for Breakout after 10:01 AM")
 
     active_trade = None  # Track active CE or PE trade
@@ -313,13 +356,13 @@ def run_strategy():
 
         if active_trade is None:  # No active trade
             if ce_ltp and ce_ltp >= high_ce * 0.98:
-                print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
+                log_and_print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
                 quantity_buy = calculate_quantity_with_risk(high_ce + 0.20)
                 ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, high_ce + 0.20, ce_symbol_token)
                 send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}")
                 active_trade = "CE"
             elif pe_ltp and pe_ltp >= high_pe * 0.98:
-                print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
+                log_and_print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
                 quantity_buy = calculate_quantity_with_risk(high_pe + 0.20)
                 pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, high_pe + 0.20, pe_symbol_token)
                 send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}")
@@ -331,14 +374,14 @@ def run_strategy():
 
             if order_status not in ["complete", "executed"]:
                 if not pending_order_logged:  # Print only once
-                    print(f"🚨 Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
+                    log_and_print(f"🚨 Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
                     send_whatsapp_message(f"🚨{current_date}: Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
                     pending_order_logged = True
                 continue
 
             pending_order_logged = False
             if not exit_order_logged:  # Print only once
-               print(f"✅ Order {trade_order_id} is executed. Proceeding with exit orders.")
+               log_and_print(f"✅ Order {trade_order_id} is executed. Proceeding with exit orders.")
                send_whatsapp_message(f"✅{current_date}: Order {trade_order_id} is executed. Proceeding with exit orders.")
                exit_order_logged = True
 
@@ -355,17 +398,17 @@ def run_strategy():
             # If price is near the target, place target order
             if trade_ltp >= target_price_trigger * 0.93 and target_order_id is None:
                 if stop_loss_order_id:
-                    print(f"❌ Cancelling Stop Loss Order as Target is Near")
+                    log_and_print(f"❌ Cancelling Stop Loss Order as Target is Near")
                     cancel_order(stop_loss_order_id)
                     stop_loss_order_id = None
-                print(f"🎯 Placing Target Order at {target_price}")
+                log_and_print(f"🎯 Placing Target Order at {target_price}")
                 target_order_id = place_order(trade_symbol, "SELL", quantity_buy, target_price, trade_symbol_token)
                 send_whatsapp_message(f"❌{current_date}: Cancelling Stop Loss Order and placing the Target order {trade_symbol} for price : {target_price} ")
 
             # If price reverses and nears the stop-loss, cancel target and place SL order
             elif trade_ltp <= stop_loss_price_trigger * 1.05 and stop_loss_order_id is None:
                 if target_order_id:
-                    print(f"❌ Cancelling Target Order and placing Stop Loss Order at {stop_loss_price}")
+                    log_and_print(f"❌ Cancelling Target Order and placing Stop Loss Order at {stop_loss_price}")
                     cancel_order(target_order_id)  # Cancel target order
                     target_order_id = None  # Reset target order ID
                 stop_loss_order_id = place_order(trade_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token)
@@ -373,21 +416,29 @@ def run_strategy():
 
             # Exit if target is hit
             if trade_ltp >= target_price_trigger:
-                print(f"✅ Target reached, exiting at {trade_ltp}")
+                log_and_print(f"✅ Target reached, exiting at {trade_ltp}")
                 send_whatsapp_message(f"✅{current_date}: Target reached, exiting at {trade_ltp} for {trade_symbol}")
                 break
 
             # Exit if stop-loss is hit
             elif trade_ltp <= stop_loss_price_trigger:
-                print(f"✅ Stop Loss triggered, exiting at {trade_ltp}")
+                log_and_print(f"✅ Stop Loss triggered, exiting at {trade_ltp}")
                 send_whatsapp_message(f"✅{current_date}: Stop Loss triggered, exiting at {trade_ltp} for {trade_symbol}")
                 break
 
 
 # Main execution
 if __name__ == "__main__":
-    if is_market_holiday():
-        send_whatsapp_message(f"🔔:Market holiday on {current_date}. Exiting script.")
-        print("Market holiday today. Exiting script.")
-    else:
-        run_strategy()
+    try:
+        if is_market_holiday():
+            send_whatsapp_message(f"🔔:Market holiday on {current_date}. Exiting script.")
+            log_and_print(f"Market holiday on {current_date}. Exiting script.")
+        else:
+            run_strategy()
+    except Exception as e:
+        log_and_print(f"❌ Exception in trading script: {str(e)}")
+        send_whatsapp_message(f"❌ Exception in trading script: {str(e)}")
+    finally:
+        log_and_print("Logging out inside finally")
+        smart_api.terminateSession(CLIENT_CODE)
+        send_whatsapp_message(f"❌ Executing Finally Block")
