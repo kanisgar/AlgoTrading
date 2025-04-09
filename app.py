@@ -6,7 +6,8 @@ from SmartApi import SmartConnect
 from datetime import datetime, timedelta
 from twilio.rest import Client
 import os
-
+import time
+from collections import deque
 # 🔹 Credentials & Configurations
 API_KEY = 'I39xpH90'
 PASSWORD = '1611'
@@ -24,6 +25,12 @@ india_tz = pytz.timezone("Asia/Kolkata")  # IST timezone
 
 # Initialize SmartConnect
 smart_api = SmartConnect(api_key=API_KEY)
+
+def on_session_expiry():
+    log_and_print("⚠️ Session expired! Re-authenticating via hook...")
+    login()
+
+smart_api.setSessionExpiryHook(on_session_expiry)
 #For twilio
 client = Client(account_sid, auth_token)
 #For Trade
@@ -44,7 +51,8 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
     level=logging.INFO
 )
-
+last_logged_time = 0
+ltp_call_timestamps = deque()
 def log_and_print(message, level="info"):
     print(message)
     if level == "info":
@@ -123,19 +131,23 @@ def wait_until_ist(target_time):
 
 def login():
     """Logs in and generates authentication tokens."""
-    global smart_api
-    totp = pyotp.TOTP(TOTP_SECRET).now()
-    session = smart_api.generateSession(CLIENT_CODE, PASSWORD, totp)
-    if session.get("status") is True:
-        refresh_token = session["data"]["refreshToken"]
-        log_and_print("✅ Login successful!")
-    else:
-        send_whatsapp_message("❌ Login failed:")
-        log_and_print(f"❌ Login failed: {session.get('message', 'Unknown error')}")
-        raise Exception(f"❌ Login failed: {session.get('message', 'Unknown error')}")
+    try:
+        global smart_api
+        totp = pyotp.TOTP(TOTP_SECRET).now()
+        session = smart_api.generateSession(CLIENT_CODE, PASSWORD, totp)
+        if session.get("status") is True:
+            refresh_token = session["data"]["refreshToken"]
+            log_and_print("✅ Login successful!")
+        else:
+            send_whatsapp_message("❌ Login failed:")
+            log_and_print(f"❌ Login failed: {session.get('message', 'Unknown error')}")
+            raise Exception(f"❌ Login failed: {session.get('message', 'Unknown error')}")
+    except Exception as e:
+        log_and_print(f"🔒 Inside Login() and exception is {e}")
 
 def is_logged_in(refresh_token):
     try:
+        time.sleep(1)
         response = smart_api.getProfile(refresh_token)
         # If it returns data, assume logged in
         stat = response.get("status")
@@ -180,27 +192,38 @@ def get_symbol_token(symbol):
         if search_response.get("status") is True:
             return search_response["data"][0]["symboltoken"]
         else:
-         log_and_print(f"❌ Failed to get symbol token for {symbol}")
-         send_whatsapp_message(f"❌ Failed to get symbol token for {symbol}")
-         raise Exception(f"❌ Failed to get symbol token for {symbol}")
+         log_and_print(f"❌ Failed to get symbol token for {symbol} and exception is {e}")
+         send_whatsapp_message(f"❌ Failed to get symbol token for {symbol} and exception is {e}")
+         raise Exception(f"❌ Failed to get symbol token for {symbol} and exception is {e}")
     except Exception as e:
-        log_and_print(f"❌ Failed to get symbol token for {symbol}")
-        send_whatsapp_message(f"❌ Failed to get symbol token for {symbol}")
-        raise Exception(f"❌ Failed to get symbol token for {symbol}")
+        log_and_print(f"❌ Failed to get symbol token for {symbol} and exception is {e}")
+        send_whatsapp_message(f"❌ Failed to get symbol token for {symbol} and exception is {e}")
+        raise Exception(f"❌ Failed to get symbol token for {symbol} and exception is {e}")
     
 
 def get_ltp(symbol, symbol_token):
     """Fetches the LTP (Last Traded Price) for the given symbol using symbol token."""
+    global last_logged_time
+    
     try:
-        if not is_logged_in(refresh_token):
-            log_and_print("Session expired, re-authenticating before square-off...")
-            login()
+        #if not is_logged_in(refresh_token):
+         #   log_and_print("Session expired, re-authenticating before square-off...")
+         #   smart_api.terminateSession(CLIENT_CODE)
+         #   login()
+        current_time = time.time()
+        ltp_call_timestamps.append(current_time)
+        while ltp_call_timestamps and current_time - ltp_call_timestamps[0] > 60:
+            ltp_call_timestamps.popleft()
+        if current_time - last_logged_time >= 60:
+            log_and_print(f"🕒 LTP calls in last 60 seconds: {len(ltp_call_timestamps)}")
+            last_logged_time = current_time
+        time.sleep(0.5)
         ltp_data = smart_api.ltpData("NFO", symbol, symbol_token)
         if ltp_data.get("status") is True:
             return float(ltp_data["data"]["ltp"])
         return None
     except Exception as e:
-        log_and_print(f"❌ Failed to get LTP for Symbol:{symbol} and Symbol Token:{symbol_token} ")
+        log_and_print(f"❌ Failed to get LTP for Symbol:{symbol} and Symbol Token:{symbol_token} and exception is {e} ")
 
 def place_order(symbol, action, quantity, price, symboltoken):
     """Places a market order for the given symbol."""
@@ -349,8 +372,14 @@ def run_strategy():
     pending_order_logged = False
     exit_order_logged = False
     quantity_buy = 225
-
+    start_time = datetime.now()
     while True:
+        current_time = datetime.now()
+        elapsed_time = current_time - start_time
+        if elapsed_time >= timedelta(hours=6):
+            log_and_print("🛑 6 hours completed. Exiting the loop.")
+            send_whatsapp_message("🛑 6 hours completed. Exiting the loop.")
+            break
         ce_ltp = get_ltp(ce_symbol, ce_symbol_token)
         pe_ltp = get_ltp(pe_symbol, pe_symbol_token)
 
@@ -372,7 +401,7 @@ def run_strategy():
             trade_order_id = ce_order_id if active_trade == "CE" else pe_order_id
             order_status = get_order_status_from_book(trade_order_id)
 
-            if order_status not in ["complete", "executed"]:
+            if order_status not in ["complete", "executed"]:#EXIT LOGIC STARTS HERE
                 if not pending_order_logged:  # Print only once
                     log_and_print(f"🚨 Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
                     send_whatsapp_message(f"🚨{current_date}: Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
