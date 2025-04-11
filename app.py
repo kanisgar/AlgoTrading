@@ -40,7 +40,7 @@ risk_max=2500
 def_buy_qty=225
 holiday_location="C:\Kani_Personal\Automate_Trading\AlgoTrading\\"
 
-log_path = f"C:/Kani_Personal/Automate_Trading/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.log"
+log_path = f"C:/Kani_Personal/Automate_Trading/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
 # Configure logging
@@ -376,9 +376,9 @@ def run_strategy():
     while True:
         current_time = datetime.now()
         elapsed_time = current_time - start_time
-        if elapsed_time >= timedelta(hours=6):
-            log_and_print("🛑 6 hours completed. Exiting the loop.")
-            send_whatsapp_message("🛑 6 hours completed. Exiting the loop.")
+        if elapsed_time >= timedelta(hours=5):
+            log_and_print("🛑 5 hours completed. Exiting the loop.")
+            send_whatsapp_message("🛑 5 hours completed. Exiting the loop.")
             break
         ce_ltp = get_ltp(ce_symbol, ce_symbol_token)
         pe_ltp = get_ltp(pe_symbol, pe_symbol_token)
