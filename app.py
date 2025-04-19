@@ -260,23 +260,21 @@ def cancel_order(order_id):
         return None
 
 def get_expiry_day():
-    """Get the correct expiry day based on holidays and weekends."""
     today = datetime.today()
     holiday_file = holiday_location + "nifty_expiry_holidays.txt"
     holidays = []
-    # Load holidays from file
     if os.path.exists(holiday_file):
         with open(holiday_file, "r") as file:
-            holidays = [line.strip() for line in file.readlines()] 
-    # Find next Thursday (weekday = 3)
-    days_ahead = (3 - today.weekday() + 7) % 7
-    if days_ahead == 0:
-        days_ahead = 7  # Always get *next* Thursday, not today if it's Thursday
-    expiry_day = today + timedelta(days=days_ahead)
-    # Adjust expiry_day if it's a holiday or falls on weekend
-    while expiry_day.strftime("%d%b%y") in holidays or expiry_day.weekday() in [5, 6]:  # 5 = Saturday, 6 = Sunday
-        expiry_day -= timedelta(days=1)
-        # Keep adjusting until it's a weekday and not a holiday
+            holidays = [line.strip() for line in file.readlines()]
+    if today.weekday() == 3 and today.strftime("%d%b%y") not in holidays:
+        expiry_day = today
+    else:
+        # Find next Thursday (weekday = 3)
+        days_ahead = (3 - today.weekday() + 7) % 7
+        expiry_day = today + timedelta(days=days_ahead)
+        # Adjust expiry_day if it's a holiday or falls on weekend
+        while expiry_day.strftime("%d%b%y") in holidays or expiry_day.weekday() in [5, 6]:
+            expiry_day -= timedelta(days=1)
     return expiry_day
 
 def get_day_high(symbol, symbol_token):
