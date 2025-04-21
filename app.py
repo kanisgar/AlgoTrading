@@ -90,7 +90,7 @@ def is_market_holiday():
         with open(holiday_file, "r") as f:
             holidays = [line.strip() for line in f.readlines()]
     except FileNotFoundError:
-        print(f"Warning: {holiday_file} not found. Assuming no holidays.")
+        log_and_print(f"Warning: {holiday_file} not found. Assuming no holidays.")
         return False
     today = datetime.today().strftime("%d%b%y")  # Format like 26Feb25
     return today in holidays
