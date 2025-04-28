@@ -225,19 +225,23 @@ def get_ltp(symbol, symbol_token):
     except Exception as e:
         log_and_print(f"❌ Failed to get LTP for Symbol:{symbol} and Symbol Token:{symbol_token} and exception is {e} ")
 
-def place_order(symbol, action, quantity, price, symboltoken):
+def place_order(symbol, action, quantity, price, symboltoken, ordertype):
     """Places a market order for the given symbol."""
     try:
+        if ordertype in ["MARKET", "LIMIT"]:
+           variety = "NORMAL"
+        else:
+           variety = "STOPLOSS"
         order_params = {
             "exchange": "NFO",
-            "variety": "STOPLOSS",
+            "variety": variety,
             "symboltoken": symboltoken,
             "tradingsymbol": symbol,
             "transactiontype": action,  # 'BUY' or 'EXIT'
             "quantity": quantity,
             "price": price,
             "triggerprice":price,
-            "ordertype": "STOPLOSS_LIMIT",
+            "ordertype":ordertype,
             "producttype": "INTRADAY",
             "duration": "DAY"
         }
@@ -276,6 +280,28 @@ def get_expiry_day():
         while expiry_day.strftime("%d%b%y") in holidays or expiry_day.weekday() in [5, 6]:
             expiry_day -= timedelta(days=1)
     return expiry_day
+
+def get_executed_price(order_id):
+    """Fetch the exact executed price for a specific order ID."""
+    try:
+        all_orders = smart_api.orderBook()  # Get the list of all today's orders
+        if all_orders.get("status"):
+            orders = all_orders["data"]
+            for order in orders:
+                if order.get("orderid") == order_id:
+                    if order.get("orderstatus").lower() == "complete":
+                        executed_price = float(order.get("averageprice"))
+                        log_and_print(f" The order executed price is {executed_price}")
+                        return executed_price
+                    else:
+                        log_and_print(f"⚠️ Order ID {order_id} is not fully complete yet. Status: {order.get('orderstatus')}")
+                        return None
+        else:
+            log_and_print("⚠️ No order data received from orderBook()")
+    except Exception as e:
+        log_and_print(f"❌ Failed to fetch executed price for order ID {order_id}: {e}")
+        send_whatsapp_message(f"❌ Failed to fetch executed price for order ID {order_id}: {e}")
+    return None
 
 def get_day_high(symbol, symbol_token):
     """Fetch the day high for the given symbol using the LTP response."""
@@ -371,6 +397,8 @@ def run_strategy():
     exit_order_logged = False
     quantity_buy = 225
     start_time = datetime.now()
+    order_type_placed = None
+    entry_price = None
     while True:
         current_time = datetime.now()
         elapsed_time = current_time - start_time
@@ -382,17 +410,32 @@ def run_strategy():
         pe_ltp = get_ltp(pe_symbol, pe_symbol_token)
 
         if active_trade is None:  # No active trade
-            if ce_ltp and ce_ltp >= high_ce * 0.98:
-                log_and_print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
+            if ce_ltp and ce_ltp >= high_ce * 0.97:
                 quantity_buy = calculate_quantity_with_risk(high_ce + 0.20)
-                ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, high_ce + 0.20, ce_symbol_token)
-                send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}")
+                if ce_ltp > high_ce:
+                    log_and_print(f"🚀 CE breakout confirmed. Placing MARKET order.")
+                    ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, None, ce_symbol_token, "MARKET")
+                    order_type_placed = "MARKET"
+                    send_whatsapp_message(f"🚀{current_date}: CE breakout confirmed. Placing MARKET order.")
+                else:
+                    log_and_print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
+                    ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, high_ce + 0.20, ce_symbol_token, "STOPLOSS_LIMIT")
+                    order_type_placed = "STOPLOSS_LIMIT"
+                    send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}")
                 active_trade = "CE"
-            elif pe_ltp and pe_ltp >= high_pe * 0.98:
-                log_and_print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
+
+            elif pe_ltp and pe_ltp >= high_pe * 0.97:
                 quantity_buy = calculate_quantity_with_risk(high_pe + 0.20)
-                pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, high_pe + 0.20, pe_symbol_token)
-                send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}")
+                if pe_ltp > high_pe:
+                    log_and_print(f"🚀 PE breakout confirmed. Placing MARKET order.")
+                    pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, None, pe_symbol_token, "MARKET")
+                    order_type_placed = "MARKET"
+                    send_whatsapp_message(f"🚀{current_date}: PE breakout confirmed. Placing MARKET order.")
+                else:
+                    log_and_print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
+                    pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, high_pe + 0.20, pe_symbol_token, "STOPLOSS_LIMIT")
+                    order_type_placed = "STOPLOSS_LIMIT"
+                    send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}")
                 active_trade = "PE"
 
         else:  # Active trade exists, monitor SL & Target exit
@@ -413,10 +456,12 @@ def run_strategy():
                exit_order_logged = True
 
             trade_symbol = ce_symbol if active_trade == "CE" else pe_symbol
-
             trade_symbol_token = ce_symbol_token if active_trade == "CE" else pe_symbol_token
             trade_ltp = get_ltp(trade_symbol, trade_symbol_token)
-            entry_price = high_ce + 0.20 if active_trade == "CE" else high_pe + 0.20
+            if order_type_placed == "MARKET" and entry_price is None:
+                entry_price = get_executed_price(trade_order_id)
+            else:
+                entry_price = high_ce + 0.20 if active_trade == "CE" else high_pe + 0.20
             target_price_trigger = round(round((entry_price * 1.15) / 0.05) * 0.05, 2)
             target_price = "{:.2f}".format(target_price_trigger)
             stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
@@ -428,9 +473,15 @@ def run_strategy():
                     log_and_print(f"❌ Cancelling Stop Loss Order as Target is Near")
                     cancel_order(stop_loss_order_id)
                     stop_loss_order_id = None
-                log_and_print(f"🎯 Placing Target Order at {target_price}")
-                target_order_id = place_order(trade_symbol, "SELL", quantity_buy, target_price, trade_symbol_token)
-                send_whatsapp_message(f"❌{current_date}: Cancelling Stop Loss Order and placing the Target order {trade_symbol} for price : {target_price} ")
+                if trade_ltp >= target_price_trigger:
+                    log_and_print(f"🎯 Target price {target_price_trigger} already breached. Placing immediate MARKET SELL.")
+                    place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
+                    send_whatsapp_message(f"🎯{current_date}: Target breached. Exiting immediately at Market for {trade_symbol}.")
+                    break
+                else:
+                    log_and_print(f"🎯 Placing Target Order at {target_price}")
+                    target_order_id = place_order(trade_symbol, "SELL", quantity_buy, target_price, trade_symbol_token,"STOPLOSS_LIMIT")
+                    send_whatsapp_message(f"❌{current_date}: Cancelling Stop Loss Order and placing the Target order {trade_symbol} for price : {target_price} ")
 
             # If price reverses and nears the stop-loss, cancel target and place SL order
             elif trade_ltp <= stop_loss_price_trigger * 1.05 and stop_loss_order_id is None:
@@ -438,8 +489,15 @@ def run_strategy():
                     log_and_print(f"❌ Cancelling Target Order and placing Stop Loss Order at {stop_loss_price}")
                     cancel_order(target_order_id)  # Cancel target order
                     target_order_id = None  # Reset target order ID
-                stop_loss_order_id = place_order(trade_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token)
-                send_whatsapp_message(f"❌{current_date}:Cancelling Target Order and placing the SL order {trade_symbol} for price : {stop_loss_price} ")
+                if trade_ltp <= stop_loss_price_trigger:
+                    log_and_print(f"🛑 Stop Loss price {stop_loss_price_trigger} breached. Placing immediate MARKET SELL.")
+                    place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
+                    send_whatsapp_message(f"🛑{current_date}: Stop Loss breached. Exiting immediately at Market for {trade_symbol}.")
+                    break
+                else:
+                    log_and_print(f"🛑 Placing Stop Loss STOPLOSS_LIMIT Order at {stop_loss_price}")
+                    stop_loss_order_id = place_order(trade_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token,"STOPLOSS_LIMIT")
+                    send_whatsapp_message(f"❌{current_date}:Cancelling Target Order and placing the SL order {trade_symbol} for price : {stop_loss_price} ")
 
             # Exit if target is hit
             if trade_ltp >= target_price_trigger:
