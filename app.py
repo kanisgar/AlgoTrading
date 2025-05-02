@@ -8,7 +8,7 @@ from twilio.rest import Client
 import os
 import time
 from collections import deque
-#Credentials & Configurations
+# 🔹 Credentials & Configurations
 API_KEY = 'I39xpH90'
 PASSWORD = '1611'
 CLIENT_CODE = 'AAAI570791'
