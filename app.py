@@ -38,9 +38,10 @@ LOT_SIZE=75
 risk_min=2000
 risk_max=2500
 def_buy_qty=225
-holiday_location="C:\Kani_Personal\Automate_Trading\AlgoTrading\\"
+#holiday_location="C:\Kani_Personal\Automate_Trading\AlgoTrading\\"
+holiday_location="/Users/kanisgar/Documents/AlgoTrading/"
 
-log_path = f"C:/Kani_Personal/Automate_Trading/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
+log_path = f"/Users/kanisgar/Documents/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
 # Configure logging
