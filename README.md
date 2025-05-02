@@ -1,4 +1,13 @@
 # AlgoTrading
+Modules to install
+python
+sudo yum install pip
+pip install pyotp
+pip install smartapi-python
+pip install pytz
+pip install twilio
+pip install logzero
+pip install websocket-client
 
 Main file -> app.py (Scheduled everyday in the morning 07.20 EET)
 This is suitable only for AngelOne. Twilio Api for whatsapp.
