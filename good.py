@@ -40,7 +40,6 @@ risk_max=2500
 def_buy_qty=225
 #holiday_location="C:\Kani_Personal\Automate_Trading\AlgoTrading\\"
 holiday_location="/home/ec2-user/AlgoTrading/"
-
 #log_path = f"C:/Kani_Personal/Automate_Trading/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
 log_path = f"/home/ec2-user/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
@@ -250,9 +249,9 @@ def place_order(symbol, action, quantity, price, symboltoken, ordertype):
         order_response = smart_api.placeOrder(order_params)
         return order_response
     except Exception as e:
+        raise Exception(f"❌ Failed to place order: {e}")
         send_whatsapp_message(f"❌ Failed to place order : {e}")
         log_and_print(f"❌ Failed to place order : {e}")
-        raise Exception(f"❌ Failed to place order: {e}")
         return None
 
 def cancel_order(order_id):
@@ -401,7 +400,6 @@ def run_strategy():
     start_time = datetime.now()
     order_type_placed = None
     entry_price = None
-    trade_order_id = None
     while True:
         current_time = datetime.now()
         elapsed_time = current_time - start_time
@@ -413,69 +411,51 @@ def run_strategy():
         pe_ltp = get_ltp(pe_symbol, pe_symbol_token)
 
         if active_trade is None:  # No active trade
-           if ce_ltp and ce_ltp >= high_ce * 0.97  and ce_order_id is None:
-               quantity_buy = calculate_quantity_with_risk(high_ce + 0.20)
-               if ce_ltp > high_ce:
-                   log_and_print(f"🚀 CE breakout confirmed. Placing MARKET order.")
-                   if pe_order_id:
-                       cancel_order(pe_order_id)
-                       pe_order_id = None
-                       log_and_print(f"❌ PE order cancelled before CE execution")                   
-                   ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, None, ce_symbol_token, "MARKET")
-                   order_type_placed = "MARKET"
-                   log_and_print(f"🚀{current_date}: CE breakout confirmed. Placing MARKET order.")
-                   send_whatsapp_message(f"🚀{current_date}: CE breakout confirmed. Placing MARKET order.")
-               else:
-                   log_and_print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
-                   if pe_order_id:
-                       cancel_order(pe_order_id)
-                       pe_order_id = None
-                       log_and_print(f"❌ PE order cancelled before CE execution")                   
-                   ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, high_ce + 0.20, ce_symbol_token, "STOPLOSS_LIMIT")
-                   order_type_placed = "STOPLOSS_LIMIT"
-                   log_and_print(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}. Order {ce_order_id} not yet executed")
-                   send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}. Order {ce_order_id} not yet executed")
-           
-           if pe_ltp and pe_ltp >= high_pe * 0.97 and pe_order_id is None:
-               quantity_buy = calculate_quantity_with_risk(high_pe + 0.20)
-               if pe_ltp > high_pe:
-                   log_and_print(f"🚀 PE breakout confirmed. Placing MARKET order.")
-                   if ce_order_id:
-                       cancel_order(ce_order_id)
-                       ce_order_id = None
-                       log_and_print(f"❌ CE order cancelled before PE execution")                   
-                   pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, None, pe_symbol_token, "MARKET")
-                   order_type_placed = "MARKET"
-                   log_and_print(f"🚀{current_date}: PE breakout confirmed. Placing MARKET order.")
-                   send_whatsapp_message(f"🚀{current_date}: PE breakout confirmed. Placing MARKET order.")
-               else:
-                   log_and_print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
-                   if ce_order_id:
-                       cancel_order(ce_order_id)
-                       ce_order_id = None
-                       log_and_print(f"❌ CE order cancelled before PE execution")                   
-                   pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, high_pe + 0.20, pe_symbol_token, "STOPLOSS_LIMIT")
-                   order_type_placed = "STOPLOSS_LIMIT"
-                   log_and_print(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}. Order {pe_order_id} not yet executed")
-                   send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}. Order {pe_order_id} not yet executed")
-                   
-           if ce_order_id:
-               ce_status = get_order_status_from_book(ce_order_id)
-               if ce_status in ["complete", "executed"]:
-                   active_trade = "CE"
-                   trade_order_id = ce_order_id
-                   log_and_print(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Proceeding with exit orders")
-                   send_whatsapp_message(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Proceeding with exit orders")
-                    
-           elif pe_order_id:
-               pe_status = get_order_status_from_book(pe_order_id)
-               if pe_status in ["complete", "executed"]:
-                   active_trade = "PE"
-                   trade_order_id = pe_order_id
-                   log_and_print(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Proceeding with exit orders")
-                   send_whatsapp_message(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Proceeding with exit orders")
+            if ce_ltp and ce_ltp >= high_ce * 0.97:
+                quantity_buy = calculate_quantity_with_risk(high_ce + 0.20)
+                if ce_ltp > high_ce:
+                    log_and_print(f"🚀 CE breakout confirmed. Placing MARKET order.")
+                    ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, None, ce_symbol_token, "MARKET")
+                    order_type_placed = "MARKET"
+                    send_whatsapp_message(f"🚀{current_date}: CE breakout confirmed. Placing MARKET order.")
+                else:
+                    log_and_print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
+                    ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, high_ce + 0.20, ce_symbol_token, "STOPLOSS_LIMIT")
+                    order_type_placed = "STOPLOSS_LIMIT"
+                    send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}")
+                active_trade = "CE"
+
+            elif pe_ltp and pe_ltp >= high_pe * 0.97:
+                quantity_buy = calculate_quantity_with_risk(high_pe + 0.20)
+                if pe_ltp > high_pe:
+                    log_and_print(f"🚀 PE breakout confirmed. Placing MARKET order.")
+                    pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, None, pe_symbol_token, "MARKET")
+                    order_type_placed = "MARKET"
+                    send_whatsapp_message(f"🚀{current_date}: PE breakout confirmed. Placing MARKET order.")
+                else:
+                    log_and_print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
+                    pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, high_pe + 0.20, pe_symbol_token, "STOPLOSS_LIMIT")
+                    order_type_placed = "STOPLOSS_LIMIT"
+                    send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}")
+                active_trade = "PE"
 
         else:  # Active trade exists, monitor SL & Target exit
+            trade_order_id = ce_order_id if active_trade == "CE" else pe_order_id
+            order_status = get_order_status_from_book(trade_order_id)
+
+            if order_status not in ["complete", "executed"]:#EXIT LOGIC STARTS HERE
+                if not pending_order_logged:  # Print only once
+                    log_and_print(f"🚨 Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
+                    send_whatsapp_message(f"🚨{current_date}: Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
+                    pending_order_logged = True
+                continue
+
+            pending_order_logged = False
+            if not exit_order_logged:  # Print only once
+               log_and_print(f"✅ Order {trade_order_id} is executed. Proceeding with exit orders.")
+               send_whatsapp_message(f"✅{current_date}: Order {trade_order_id} is executed. Proceeding with exit orders.")
+               exit_order_logged = True
+
             trade_symbol = ce_symbol if active_trade == "CE" else pe_symbol
             trade_symbol_token = ce_symbol_token if active_trade == "CE" else pe_symbol_token
             trade_ltp = get_ltp(trade_symbol, trade_symbol_token)
