@@ -10,6 +10,8 @@ from twilio.rest import Client
 import os
 import time
 from collections import deque
+import platform
+import getpass
 # 🔹 Credentials & Configurations
 API_KEY = 'I39xpH90'
 PASSWORD = '1611'
@@ -20,8 +22,8 @@ auth_token = '06c408e1a82a20ae2b839f2cceac4705'  # Replace with actual token
 current_date = datetime.now().strftime("%Y-%m-%d")
 refresh_token = None
 
-#For EC2
-should_stop_ec2_on_exit = True
+#For EC2 False by Default
+should_stop_ec2_on_exit = False
 # Define Timezones
 finland_tz = pytz.timezone("Europe/Helsinki")  # Laptop time
 india_tz = pytz.timezone("Asia/Kolkata")  # IST timezone
@@ -61,11 +63,22 @@ LOT_SIZE=75
 risk_min=2000
 risk_max=2500
 def_buy_qty=225
-#holiday_location="C:\Kani_Personal\Automate_Trading\AlgoTrading\\"
-holiday_location="/home/ec2-user/AlgoTrading/"
+system_platform = platform.system()
+current_user = getpass.getuser()
 
-#log_path = f"C:/Kani_Personal/Automate_Trading/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
-log_path = f"/home/ec2-user/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
+if system_platform == "Windows":
+    holiday_location = "C:\\Kani_Personal\\Automate_Trading\\AlgoTrading\\"
+    log_path = f"C:/Kani_Personal/Automate_Trading/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
+
+elif system_platform == "Darwin":  # Mac
+    holiday_location = "/Users/kanisgar/Documents/AlgoTrading/"
+    log_path = f"/Users/kanisgar/Documents/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
+
+elif system_platform == "Linux":
+    if current_user == "ec2-user":
+        holiday_location = "/home/ec2-user/AlgoTrading/"
+        log_path = f"/home/ec2-user/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
+        should_stop_ec2_on_exit = True
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
 # Configure logging
@@ -568,6 +581,7 @@ def run_strategy():
 # Main execution
 if __name__ == "__main__":
     try:
+        log_and_print(f"job is running on {system_platform}")
         if is_market_holiday():
             send_whatsapp_message(f"🔔:Market holiday on {current_date}. Exiting script.")
             log_and_print(f"Market holiday on {current_date}. Exiting script.")
