@@ -503,25 +503,37 @@ def run_strategy():
                if ce_status in ["complete", "executed"]:
                    active_trade = "CE"
                    trade_order_id = ce_order_id
-                   log_and_print(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Proceeding with exit orders")
-                   send_whatsapp_message(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Proceeding with exit orders")
+                   if order_type_placed == "MARKET" and entry_price is None:
+                       entry_price = get_executed_price(ce_order_id)
+                   else:
+                       entry_price = high_ce + 0.20
+                   stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
+                   stop_loss_price = "{:.2f}".format(stop_loss_price_trigger)
+                   stop_loss_order_id  = place_order(ce_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token,"STOPLOSS_LIMIT")
+                   if stop_loss_order_id:
+                       log_and_print(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Placed SL order {stop_loss_order_id} for safety at {stop_loss_price}. Proceeding with exit orders")
+                       send_whatsapp_message(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Proceeding with exit orders")
                     
            elif pe_order_id:
                pe_status = get_order_status_from_book(pe_order_id)
                if pe_status in ["complete", "executed"]:
                    active_trade = "PE"
                    trade_order_id = pe_order_id
-                   log_and_print(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Proceeding with exit orders")
-                   send_whatsapp_message(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Proceeding with exit orders")
+                   if order_type_placed == "MARKET" and entry_price is None:
+                       entry_price = get_executed_price(pe_order_id)
+                   else:
+                       entry_price = high_pe + 0.20
+                   stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
+                   stop_loss_price = "{:.2f}".format(stop_loss_price_trigger)
+                   stop_loss_order_id  = place_order(pe_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token,"STOPLOSS_LIMIT")
+                   if stop_loss_order_id:
+                       log_and_print(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Placed SL order {stop_loss_order_id} for safety at {stop_loss_price}.Proceeding with exit orders")
+                       send_whatsapp_message(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Proceeding with exit orders")
 
         else:  # Active trade exists, monitor SL & Target exit
             trade_symbol = ce_symbol if active_trade == "CE" else pe_symbol
             trade_symbol_token = ce_symbol_token if active_trade == "CE" else pe_symbol_token
             trade_ltp = get_ltp(trade_symbol, trade_symbol_token)
-            if order_type_placed == "MARKET" and entry_price is None:
-                entry_price = get_executed_price(trade_order_id)
-            else:
-                entry_price = high_ce + 0.20 if active_trade == "CE" else high_pe + 0.20
             target_price_trigger = round(round((entry_price * 1.15) / 0.05) * 0.05, 2)
             target_price = "{:.2f}".format(target_price_trigger)
             stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
@@ -535,9 +547,9 @@ def run_strategy():
                     stop_loss_order_id = None
                 if trade_ltp >= target_price_trigger:
                     log_and_print(f"🎯 Target price {target_price_trigger} already breached. Placing immediate MARKET SELL.")
-                    place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
-                    send_whatsapp_message(f"🎯{current_date}: Target breached. Exiting immediately at Market for {trade_symbol}.")
-                    break
+                    target_order_id = place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
+                    if target_order_id:
+                        send_whatsapp_message(f"🎯{current_date}: Target breached. Exiting immediately at Market for {trade_symbol}.")
                 else:
                     log_and_print(f"🎯 Placing Target Order at {target_price}")
                     target_order_id = place_order(trade_symbol, "SELL", quantity_buy, target_price, trade_symbol_token,"STOPLOSS_LIMIT")
@@ -551,32 +563,39 @@ def run_strategy():
                     target_order_id = None  # Reset target order ID
                 if trade_ltp <= stop_loss_price_trigger:
                     log_and_print(f"🛑 Stop Loss price {stop_loss_price_trigger} breached. Placing immediate MARKET SELL.")
-                    place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
-                    send_whatsapp_message(f"🛑{current_date}: Stop Loss breached. Exiting immediately at Market for {trade_symbol}.")
-                    break
+                    stop_loss_order_id = place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
+                    if stop_loss_order_id:
+                        send_whatsapp_message(f"🛑{current_date}: Stop Loss breached. Exiting immediately at Market for {trade_symbol}.")
                 else:
                     log_and_print(f"🛑 Placing Stop Loss STOPLOSS_LIMIT Order at {stop_loss_price}")
                     stop_loss_order_id = place_order(trade_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token,"STOPLOSS_LIMIT")
                     send_whatsapp_message(f"❌{current_date}:Cancelling Target Order and placing the SL order {trade_symbol} for price : {stop_loss_price} ")
 
             # Exit if target is hit
-            if trade_ltp >= target_price_trigger:
-                log_and_print(f"✅ Target reached, exiting at {trade_ltp}")
-                send_whatsapp_message(f"✅{current_date}: Target reached, exiting at {trade_ltp} for {trade_symbol}")
-                if should_stop_ec2_on_exit:
-                    log_and_print("Shutting down EC2 instance")
-                    trigger_ec2_shutdown_lambda()
-                break
+            if target_order_id:
+                target_status = get_order_status_from_book(target_order_id)
+                if target_status in ["complete", "executed"]:
+                    log_and_print(f"✅ Target reached, exiting at {trade_ltp}")
+                    send_whatsapp_message(f"✅{current_date}: Target reached, exiting at {trade_ltp} for {trade_symbol}")
+                    if should_stop_ec2_on_exit:
+                        log_and_print("Shutting down EC2 instance")
+                        trigger_ec2_shutdown_lambda()
+                    break
+                elif trade_ltp >= target_price_trigger:
+                    send_whatsapp_message(f"✅ !!!!!1Target reached at {trade_ltp}. But the order is not yet executed. Check FAASSTTTT")
 
             # Exit if stop-loss is hit
-            elif trade_ltp <= stop_loss_price_trigger:
-                log_and_print(f"✅ Stop Loss triggered, exiting at {trade_ltp}")
-                send_whatsapp_message(f"✅{current_date}: Stop Loss triggered, exiting at {trade_ltp} for {trade_symbol}")
-                if should_stop_ec2_on_exit:
-                    log_and_print("Shutting down EC2 instance")
-                    trigger_ec2_shutdown_lambda()
-                break
-
+            elif stop_loss_order_id:
+                sl_status = get_order_status_from_book(stop_loss_order_id)
+                if sl_status in ["complete", "executed"]:
+                    log_and_print(f"✅ Stop Loss triggered, exiting at {trade_ltp}")
+                    send_whatsapp_message(f"✅{current_date}: Stop Loss triggered, exiting at {trade_ltp} for {trade_symbol}")
+                    if should_stop_ec2_on_exit:
+                        log_and_print("Shutting down EC2 instance")
+                        trigger_ec2_shutdown_lambda()
+                    break
+                elif trade_ltp <= stop_loss_price_trigger:
+                    send_whatsapp_message(f"✅ !!!!!SL reached at {trade_ltp}. But the order is not yet executed. Check FAASSTTTT")
 
 # Main execution
 if __name__ == "__main__":
