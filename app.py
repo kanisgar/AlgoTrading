@@ -61,8 +61,8 @@ client = Client(account_sid, auth_token)
 #For Trade
 LOT_SIZE=75
 risk_min=2000
-risk_max=2500
-def_buy_qty=225
+risk_max=2700
+def_buy_qty=75
 system_platform = platform.system()
 current_user = getpass.getuser()
 
@@ -118,9 +118,7 @@ def calculate_quantity_with_risk(entry_price):
         return def_buy_qty
     except Exception as e:
         log_and_print(f"Error in calculate_quantity_with_risk: {e}", "error")
-        return def_buy_qty
-    finally:
-        log_and_print(f"The buy quantity is {def_buy_qty}") 
+        return def_buy_qty 
     
 def is_market_holiday():
     holiday_file = holiday_location + "nifty_expiry_holidays.txt"  
@@ -433,7 +431,7 @@ def run_strategy():
     stop_loss_order_id = None
     pending_order_logged = False
     exit_order_logged = False
-    quantity_buy = 225
+    quantity_buy = 75
     start_time = datetime.now()
     order_type_placed = None
     entry_price = None
