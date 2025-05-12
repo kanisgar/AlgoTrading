@@ -497,6 +497,7 @@ def run_strategy():
                    send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}. Order {pe_order_id} not yet executed")
                    
            if ce_order_id:
+               time.sleep(1)
                ce_status = get_order_status_from_book(ce_order_id)
                if ce_status in ["complete", "executed"]:
                    active_trade = "CE"
@@ -513,6 +514,7 @@ def run_strategy():
                        send_whatsapp_message(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Proceeding with exit orders")
                     
            elif pe_order_id:
+               time.sleep(1)
                pe_status = get_order_status_from_book(pe_order_id)
                if pe_status in ["complete", "executed"]:
                    active_trade = "PE"
@@ -571,6 +573,7 @@ def run_strategy():
 
             # Exit if target is hit
             if target_order_id:
+                time.sleep(1)
                 target_status = get_order_status_from_book(target_order_id)
                 if target_status in ["complete", "executed"]:
                     log_and_print(f"✅ Target reached, exiting at {trade_ltp}")
@@ -581,9 +584,11 @@ def run_strategy():
                     break
                 elif trade_ltp >= target_price_trigger:
                     send_whatsapp_message(f"✅ !!!!!1Target reached at {trade_ltp}. But the order is not yet executed. Check FAASSTTTT")
+                    break
 
             # Exit if stop-loss is hit
             elif stop_loss_order_id:
+                time.sleep(1)
                 sl_status = get_order_status_from_book(stop_loss_order_id)
                 if sl_status in ["complete", "executed"]:
                     log_and_print(f"✅ Stop Loss triggered, exiting at {trade_ltp}")
@@ -594,6 +599,7 @@ def run_strategy():
                     break
                 elif trade_ltp <= stop_loss_price_trigger:
                     send_whatsapp_message(f"✅ !!!!!SL reached at {trade_ltp}. But the order is not yet executed. Check FAASSTTTT")
+                    break
 
 # Main execution
 if __name__ == "__main__":
