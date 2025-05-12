@@ -507,7 +507,7 @@ def run_strategy():
                        entry_price = high_ce + 0.20
                    stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
                    stop_loss_price = "{:.2f}".format(stop_loss_price_trigger)
-                   stop_loss_order_id  = place_order(ce_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token,"STOPLOSS_LIMIT")
+                   stop_loss_order_id  = place_order(ce_symbol, "SELL", quantity_buy, stop_loss_price, ce_symbol_token,"STOPLOSS_LIMIT")
                    if stop_loss_order_id:
                        log_and_print(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Placed SL order {stop_loss_order_id} for safety at {stop_loss_price}. Proceeding with exit orders")
                        send_whatsapp_message(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Proceeding with exit orders")
@@ -523,7 +523,7 @@ def run_strategy():
                        entry_price = high_pe + 0.20
                    stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
                    stop_loss_price = "{:.2f}".format(stop_loss_price_trigger)
-                   stop_loss_order_id  = place_order(pe_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token,"STOPLOSS_LIMIT")
+                   stop_loss_order_id  = place_order(pe_symbol, "SELL", quantity_buy, stop_loss_price, pe_symbol_token,"STOPLOSS_LIMIT")
                    if stop_loss_order_id:
                        log_and_print(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Placed SL order {stop_loss_order_id} for safety at {stop_loss_price}.Proceeding with exit orders")
                        send_whatsapp_message(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Proceeding with exit orders")
