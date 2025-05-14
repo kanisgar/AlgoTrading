@@ -206,7 +206,7 @@ def get_order_status_from_book(order_id):
     Fetch order status from Angel One order book.
     Returns the order status as a string or "UNKNOWN" if not found.
     """
-    time.sleep(1)
+    #time.sleep(1)
     order_book = get_order_book(smart_api,CACHE_FILE,LOCK_FILE)  # Fetch all orders
     
     if order_book and order_book.get("data"):  # Ensure we have valid data
@@ -328,6 +328,7 @@ def get_expiry_day():
 def get_executed_price(order_id):
     """Fetch the exact executed price for a specific order ID."""
     try:
+        time.sleep(1)
         all_orders = get_order_book(smart_api,CACHE_FILE,LOCK_FILE)  # Get the list of all today's orders
         if all_orders.get("status"):
             orders = all_orders["data"]
