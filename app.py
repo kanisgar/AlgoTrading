@@ -12,6 +12,7 @@ import time
 from collections import deque
 import platform
 import getpass
+import sys
 # 🔹 Credentials & Configurations
 API_KEY = 'I39xpH90'
 PASSWORD = '1611'
@@ -80,6 +81,13 @@ elif system_platform == "Linux":
         log_path = f"/home/ec2-user/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
         should_stop_ec2_on_exit = False
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+# 🔁 Use the holiday_location to build shared path
+shared_utils_path = os.path.join(holiday_location, "common")
+sys.path.append(shared_utils_path)
+from get_cached_order_book import get_order_book
+CACHE_FILE = os.path.join(shared_utils_path, "orderbook_cache.json")
+LOCK_FILE = os.path.join(shared_utils_path, "orderbook_cache.lock")
 
 # Configure logging
 logging.basicConfig(
@@ -200,7 +208,7 @@ def get_order_status_from_book(order_id):
     Returns the order status as a string or "UNKNOWN" if not found.
     """
     time.sleep(1)
-    order_book = smart_api.orderBook()  # Fetch all orders
+    order_book = get_order_book(smart_api,CACHE_FILE,LOCK_FILE)  # Fetch all orders
     
     if order_book and order_book.get("data"):  # Ensure we have valid data
         for order in order_book["data"]:  # Loop through orders
@@ -321,7 +329,7 @@ def get_expiry_day():
 def get_executed_price(order_id):
     """Fetch the exact executed price for a specific order ID."""
     try:
-        all_orders = smart_api.orderBook()  # Get the list of all today's orders
+        all_orders = get_order_book(smart_api,CACHE_FILE,LOCK_FILE)  # Get the list of all today's orders
         if all_orders.get("status"):
             orders = all_orders["data"]
             for order in orders:
@@ -451,7 +459,7 @@ def run_strategy():
         pe_ltp = get_ltp(pe_symbol, pe_symbol_token)
 
         if active_trade is None:  # No active trade
-           if ce_ltp and ce_ltp >= high_ce * 0.97  and ce_order_id is None:
+           if ce_ltp and ce_ltp >= high_ce * 0.95  and ce_order_id is None:
                quantity_buy = calculate_quantity_with_risk(high_ce + 0.20)
                if ce_ltp > high_ce:
                    log_and_print(f"🚀 CE breakout confirmed. Placing MARKET order.")
@@ -474,7 +482,7 @@ def run_strategy():
                    log_and_print(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}. Order {ce_order_id} not yet executed")
                    send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}. Order {ce_order_id} not yet executed")
            
-           if pe_ltp and pe_ltp >= high_pe * 0.97 and pe_order_id is None:
+           if pe_ltp and pe_ltp >= high_pe * 0.95 and pe_order_id is None:
                quantity_buy = calculate_quantity_with_risk(high_pe + 0.20)
                if pe_ltp > high_pe:
                    log_and_print(f"🚀 PE breakout confirmed. Placing MARKET order.")

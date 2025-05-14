@@ -1,3 +1,6 @@
 logs
 job_logs
 .idea
+common/*.json
+common/__pycache__
+common/*.lock
