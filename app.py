@@ -1,17 +1,16 @@
-import pyotp
-import boto3
-import json
-import time
-import pytz
-import logging
-from SmartApi import SmartConnect
-from datetime import datetime, timedelta
-from twilio.rest import Client
 import os
+from datetime import datetime, timedelta
+import pyotp
+from SmartApi import SmartConnect
+import pytz
 import time
 from collections import deque
+import logging
+import boto3
+import json
 import platform
 import getpass
+from twilio.rest import Client
 import sys
 # 🔹 Credentials & Configurations
 API_KEY = 'I39xpH90'
