@@ -46,9 +46,9 @@ def trigger_ec2_shutdown_lambda():
             InvocationType="Event",  # Async execution
             Payload=json.dumps(payload).encode('utf-8')
         )
-        log_and_print("🛑 EC2 shutdown Lambda triggered successfully.")
+        print("🛑 EC2 shutdown Lambda triggered successfully.")
     except Exception as e:
-        log_and_print(f"⚠️ Failed to trigger Lambda: {e}")
+        print(f"⚠️ Failed to trigger Lambda: {e}")
 
 
 def on_session_expiry():
