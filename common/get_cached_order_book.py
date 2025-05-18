@@ -27,7 +27,7 @@ def get_order_book(smart_api, cache_file, lock_file, ttl_seconds=1):
                 except Exception:
                     pass
 
-        print("[INFO] Fetching order book from SmartAPI...")
+        #print("[INFO] Fetching order book from SmartAPI...")
         data = smart_api.orderBook()
         if data and data.get("data"):
             with open(cache_file, "w") as f:
