@@ -449,12 +449,48 @@ def run_strategy():
         current_time = datetime.now()
         elapsed_time = current_time - start_time
         if elapsed_time >= timedelta(hours=5):
-            log_and_print("🛑 5 hours completed. Exiting the loop.")
-            send_whatsapp_message("🛑 5 hours completed. Exiting the loop.")
-            if should_stop_ec2_on_exit:
-                log_and_print("Closing the EC2 instance")
-                trigger_ec2_shutdown_lambda()
-            break
+            if active_trade is None:
+                log_and_print("🛑 5 hours completed. No active trade. Exiting the loop.")
+                send_whatsapp_message("🛑 5 hours completed. Exiting the loop.")
+                if should_stop_ec2_on_exit:
+                    log_and_print("Closing the EC2 instance")
+                    trigger_ec2_shutdown_lambda()
+                break
+            else:
+                if grace_period_start_time is None:
+                    grace_period_start_time = current_time
+                    log_and_print("⏳ 5 hours done, but active trade exists. Starting 10-min grace period...")
+                    send_whatsapp_message("⏳ Active trade found after 5 hours. Will square off in 10 mins if still open.")
+                elif current_time - grace_period_start_time >= timedelta(minutes=10):
+                    log_and_print("🚨 Grace period over. Forcing square-off.")
+                    send_whatsapp_message("🚨 Grace period over. Squaring off active trade.")
+        
+                    # Cancel target and SL orders if present
+                    if target_order_id:
+                        try:
+                            cancel_order(target_order_id)
+                            log_and_print("🗑️ Target order cancelled.")
+                        except Exception as e:
+                            log_and_print(f"⚠️ Failed to cancel target order: {e}")
+                            send_whatsapp_message(f"⚠️ Failed to cancel target order: {e}")
+                    if stop_loss_order_id:
+                        try:
+                            cancel_order(stop_loss_order_id)
+                            log_and_print("🗑️ Stop-loss order cancelled.")
+                        except Exception as e:
+                            log_and_print(f"⚠️ Failed to cancel SL order: {e}")
+                            send_whatsapp_message(f"⚠️ Failed to cancel SL order: {e}")
+                    if active_trade == "CE":
+                        place_order(ce_symbol, "SELL", quantity_buy, None, ce_symbol_token, "MARKET")
+                        log_and_print(f"✅ Force-squared CE position: {ce_symbol}")
+                    elif active_trade == "PE":
+                        place_order(pe_symbol, "SELL", quantity_buy, None, pe_symbol_token, "MARKET")
+                        log_and_print(f"✅ Force-squared PE position: {pe_symbol}")
+                    send_whatsapp_message("✅ Position squared off forcefully after grace period.")
+                    if should_stop_ec2_on_exit:
+                        log_and_print("Closing the EC2 instance")
+                        trigger_ec2_shutdown_lambda()
+                    break
         ce_ltp = get_ltp(ce_symbol, ce_symbol_token)
         pe_ltp = get_ltp(pe_symbol, pe_symbol_token)
 
