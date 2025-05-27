@@ -206,15 +206,18 @@ def get_order_status_from_book(order_id):
     Fetch order status from Angel One order book.
     Returns the order status as a string or "UNKNOWN" if not found.
     """
-    #time.sleep(1)
-    order_book = get_order_book(smart_api,CACHE_FILE,LOCK_FILE)  # Fetch all orders
-    
-    if order_book and order_book.get("data"):  # Ensure we have valid data
-        for order in order_book["data"]:  # Loop through orders
-            if order.get("orderid") == order_id:
-                return order.get("status", "UNKNOWN")  # Return status if found
-    
-    return "UNKNOWN"  # Default if order is not found
+    try:
+        order_book = get_order_book(smart_api, CACHE_FILE, LOCK_FILE)  # Fetch all orders     
+        if order_book and order_book.get("data"):  # Ensure we have valid data
+            for order in order_book["data"]:  # Loop through orders
+                if str(order.get("orderid")) == str(order_id):
+                    return order.get("status", "UNKNOWN")  # Return status if found                
+        log_and_print(f"⚠️ Order ID {order_id} not found in order book.")
+    except Exception as e:
+        log_and_print(f"❌ Error fetching status for order ID {order_id}: {e}")
+        send_whatsapp_message(f"Error fetching status for order ID {order_id}: {e}")
+    return "UNKNOWN"  # Default if order is not found or exception occurs
+
 
 def get_nifty_atm():
     """Fetches the nearest ATM strike price for NIFTY."""
@@ -329,23 +332,24 @@ def get_executed_price(order_id):
     """Fetch the exact executed price for a specific order ID."""
     try:
         time.sleep(1)
-        all_orders = get_order_book(smart_api,CACHE_FILE,LOCK_FILE)  # Get the list of all today's orders
+        all_orders = get_order_book(smart_api, CACHE_FILE, LOCK_FILE)  # Get the list of all today's orders
         if all_orders.get("status"):
             orders = all_orders["data"]
             for order in orders:
-                if order.get("orderid") == order_id:
-                    if order.get("orderstatus").lower() == "complete":
+                if str(order.get("orderid")) == str(order_id):
+                    status = order.get("orderstatus", "").strip().lower()
+                    if status == "complete":
                         executed_price = float(order.get("averageprice"))
-                        log_and_print(f" The order executed price is {executed_price}")
                         return executed_price
                     else:
                         log_and_print(f"⚠️ Order ID {order_id} is not fully complete yet. Status: {order.get('orderstatus')}")
                         return None
+            log_and_print(f"⚠️ Order ID {order_id} not found in order book.")
         else:
             log_and_print("⚠️ No order data received from orderBook()")
     except Exception as e:
         log_and_print(f"❌ Failed to fetch executed price for order ID {order_id}: {e}")
-        send_whatsapp_message(f"❌ Failed to fetch executed price for order ID {order_id}: {e}")
+        send_whatsapp_message(f"Failed to fetch executed price for order ID {order_id}: {e}")
     return None
 
 def get_day_high(symbol, symbol_token):
