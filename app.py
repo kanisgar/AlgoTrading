@@ -273,12 +273,12 @@ def get_ltp(symbol, symbol_token):
         log_and_print(f"❌ Failed to get LTP for Symbol:{symbol} and Symbol Token:{symbol_token} and exception is {e} ")
 
 def place_order(symbol, action, quantity, price, symboltoken, ordertype):
-    """Places a market order for the given symbol."""
+    """Places a market order for the given symbol. Retries once if order_response is None."""
     try:
         if ordertype in ["MARKET", "LIMIT"]:
-           variety = "NORMAL"
+            variety = "NORMAL"
         else:
-           variety = "STOPLOSS"
+            variety = "STOPLOSS"     
         order_params = {
             "exchange": "NFO",
             "variety": variety,
@@ -287,23 +287,32 @@ def place_order(symbol, action, quantity, price, symboltoken, ordertype):
             "transactiontype": action,  # 'BUY' or 'EXIT'
             "quantity": quantity,
             "price": price,
-            "triggerprice":price,
-            "ordertype":ordertype,
+            "triggerprice": price,
+            "ordertype": ordertype,
             "producttype": "INTRADAY",
             "duration": "DAY"
         }
         order_response = smart_api.placeOrder(order_params)
+        if order_response is None:
+            log_and_print("⚠️ order_response is None. Attempting re-login and retry...")
+            login()
+            order_response = smart_api.placeOrder(order_params)
         return order_response
+
     except Exception as e:
-        send_whatsapp_message(f"❌ Failed to place order : {e}")
-        log_and_print(f"❌ Failed to place order : {e}")
+        send_whatsapp_message(f"❌ Failed to place order: {e}")
+        log_and_print(f"❌ Failed to place order: {e}")
         raise Exception(f"❌ Failed to place order: {e}")
-        return None
+
 
 def cancel_order(order_id):
     """Cancel the order by its order ID."""
     try:
         cancel_response = smart_api.cancelOrder(str(order_id), "STOPLOSS")
+        if cancel_response is None:
+            log_and_print("⚠️ cancel_response is None. Attempting re-login and retry...")
+            login()
+            cancel_response = smart_api.cancelOrder(str(order_id), "STOPLOSS")
         return cancel_response
     except Exception as e:
         send_whatsapp_message(f"❌ DO MANUALLY; Failed to cancel order {order_id}: {e}")
