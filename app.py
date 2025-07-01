@@ -590,7 +590,7 @@ def run_strategy():
             trade_symbol = ce_symbol if active_trade == "CE" else pe_symbol
             trade_symbol_token = ce_symbol_token if active_trade == "CE" else pe_symbol_token
             trade_ltp = get_ltp(trade_symbol, trade_symbol_token)
-            target_price_trigger = round(round((entry_price * 1.15) / 0.05) * 0.05, 2)
+            target_price_trigger = round(round((entry_price * 1.18) / 0.05) * 0.05, 2)
             target_price = "{:.2f}".format(target_price_trigger)
             stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
             stop_loss_price = "{:.2f}".format(stop_loss_price_trigger)
@@ -632,7 +632,7 @@ def run_strategy():
                 target_status = get_order_status_from_book(target_order_id)
                 if target_status in ["complete", "executed"]:
                     log_and_print(f"✅ Target reached, exiting at {trade_ltp}")
-                    send_whatsapp_message(f"✅{current_date}: Target reached, exiting at {trade_ltp} for {trade_symbol}")
+                    send_whatsapp_message(f"✅{current_date}: Target reached, exiting at Target: {target_price} and current LTP: {trade_ltp} for {trade_symbol}")
                     if should_stop_ec2_on_exit:
                         log_and_print("Shutting down EC2 instance")
                         trigger_ec2_shutdown_lambda()
@@ -646,7 +646,7 @@ def run_strategy():
                 sl_status = get_order_status_from_book(stop_loss_order_id)
                 if sl_status in ["complete", "executed"]:
                     log_and_print(f"✅ Stop Loss triggered, exiting at {trade_ltp}")
-                    send_whatsapp_message(f"✅{current_date}: Stop Loss triggered, exiting at {trade_ltp} for {trade_symbol}")
+                    send_whatsapp_message(f"✅{current_date}: Stop Loss triggered, exiting at SL: {stop_loss_price} and current LTP: {trade_ltp} for {trade_symbol}")
                     if should_stop_ec2_on_exit:
                         log_and_print("Shutting down EC2 instance")
                         trigger_ec2_shutdown_lambda()
