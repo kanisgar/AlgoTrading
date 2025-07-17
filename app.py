@@ -475,8 +475,22 @@ def run_strategy():
         elapsed_time = current_time - start_time
         if elapsed_time >= timedelta(hours=5):
             if active_trade is None:
-                log_and_print("🛑 5 hours completed. No active trade. Exiting the loop.")
-                send_whatsapp_message("🛑 5 hours completed. Exiting the loop.")
+                log_and_print("🛑 5 hours completed. No active trade. Exiting the loop. Trying to cancel the pending orders")
+                if ce_order_id:
+                    try:
+                        cancel_order(ce_order_id)
+                        log_and_print("🗑️ Pending CE order cancelled before exit.")
+                    except Exception as e:
+                        log_and_print(f"⚠️ Failed to cancel pending CE order: {e}")
+                        send_whatsapp_message(f"⚠️ Failed to cancel pending CE order: {e}")
+                if pe_order_id:
+                    try:
+                        cancel_order(pe_order_id)
+                        log_and_print("🗑️ Pending PE order cancelled before exit.")
+                    except Exception as e:
+                        log_and_print(f"⚠️ Failed to cancel pending PE order: {e}")
+                        send_whatsapp_message(f"⚠️ Failed to cancel pending PE order: {e}")
+                send_whatsapp_message("🛑 5 hours completed.should have cancelled the pending orders. But please check once.")
                 if should_stop_ec2_on_exit:
                     log_and_print("Closing the EC2 instance")
                     trigger_ec2_shutdown_lambda()
