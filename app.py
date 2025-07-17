@@ -394,6 +394,14 @@ def track_highs_until_1000(ce_symbol, ce_symbol_token, pe_symbol, pe_symbol_toke
     log_and_print(f"✅ 10:00 AM Highs Locked - CE: {high_ce}, PE: {high_pe}")
     return high_ce, high_pe
 
+def get_breakout_percentage(high_price):
+    if high_price > 100:
+        return 0.95
+    elif 50 < high_price <= 100:
+        return 0.92
+    else:
+        return 0.86
+
 def run_strategy():
     """Runs the trading strategy."""
     log_and_print("🔄 Running strategy...")
@@ -405,7 +413,7 @@ def run_strategy():
 
     if "08:00" <= current_time < "10:00":
         # Execute automated flow before 10:00 AM
-        wait_until_ist("09:55")  # Wait until 9:55 AM
+        wait_until_ist("09:58")  # Wait until 9:58 AM
         if not is_logged_in(refresh_token):
             log_and_print("Session expired, re-authenticating before order placing...")
             login()
@@ -444,8 +452,12 @@ def run_strategy():
             return  # Exit script immediately
 
     log_and_print("📈 Monitoring breakout after 10:01 AM...")
-    send_whatsapp_message(f"🔔{current_date}: 10:00 AM Highs Locked:\n📈 CE({ce_symbol}): {high_ce}\n📉 PE({pe_symbol}): {high_pe}.\nWaiting for Breakout after 10:01 AM")
-
+    #Calculation the breakout threshold value for entry    
+    ce_breakout_threshold = round(high_ce * get_breakout_percentage(high_ce) * 10) / 10
+    pe_breakout_threshold = round(high_pe * get_breakout_percentage(high_pe) * 10) / 10
+    
+    send_whatsapp_message(f"🔔{current_date}: 10:00 AM Highs Locked:\n📈 CE({ce_symbol}): {high_ce} and ce_threshold is :{ce_breakout_threshold}\n📉 PE({pe_symbol}): {high_pe} and pe_breakout_threshold is : {pe_breakout_threshold}.\nWaiting for Breakout after 10:01 AM")
+    
     active_trade = None  # Track active CE or PE trade
     ce_order_id = None
     pe_order_id = None
@@ -508,7 +520,7 @@ def run_strategy():
         pe_ltp = get_ltp(pe_symbol, pe_symbol_token)
 
         if active_trade is None:  # No active trade
-           if ce_ltp and ce_ltp >= high_ce * 0.95  and ce_order_id is None:
+           if ce_ltp and ce_ltp >= ce_breakout_threshold and ce_order_id is None:
                quantity_buy = calculate_quantity_with_risk(high_ce + 0.20)
                if ce_ltp > high_ce:
                    log_and_print(f"🚀 CE breakout confirmed. Placing MARKET order.")
@@ -531,7 +543,7 @@ def run_strategy():
                    log_and_print(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}. Order {ce_order_id} not yet executed")
                    send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}. Order {ce_order_id} not yet executed")
            
-           if pe_ltp and pe_ltp >= high_pe * 0.95 and pe_order_id is None:
+           if pe_ltp and pe_ltp >= pe_breakout_threshold and pe_order_id is None:
                quantity_buy = calculate_quantity_with_risk(high_pe + 0.20)
                if pe_ltp > high_pe:
                    log_and_print(f"🚀 PE breakout confirmed. Placing MARKET order.")
