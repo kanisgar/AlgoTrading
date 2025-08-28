@@ -326,11 +326,11 @@ def get_expiry_day():
     if os.path.exists(holiday_file):
         with open(holiday_file, "r") as file:
             holidays = [line.strip() for line in file.readlines()]
-    if today.weekday() == 3 and today.strftime("%d%b%y") not in holidays:
+    if today.weekday() == 1 and today.strftime("%d%b%y") not in holidays:
         expiry_day = today
     else:
-        # Find next Thursday (weekday = 3)
-        days_ahead = (3 - today.weekday() + 7) % 7
+        # Find next Tuesday (weekday = 1)
+        days_ahead = (1 - today.weekday() + 7) % 7
         expiry_day = today + timedelta(days=days_ahead)
         # Adjust expiry_day if it's a holiday or falls on weekend
         while expiry_day.strftime("%d%b%y") in holidays or expiry_day.weekday() in [5, 6]:
