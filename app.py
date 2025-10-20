@@ -12,6 +12,7 @@ import platform
 import getpass
 from twilio.rest import Client
 import sys
+import requests
 # 🔹 Credentials & Configurations
 API_KEY = 'I39xpH90'
 PASSWORD = '1611'
@@ -21,7 +22,12 @@ account_sid = 'AC6ef902b81d63731c13b746613aadb2aa'
 auth_token = '06c408e1a82a20ae2b839f2cceac4705'  # Replace with actual token
 current_date = datetime.now().strftime("%Y-%m-%d")
 refresh_token = None
-
+#For Telegram Bot
+BOT_TOKEN = "8313800040:AAFbD8M5e6g8OF2SlGJzgfM9c9oyfZyah6c"
+# List of Telegram Chat IDs (Replace with actual chat IDs of your recipients)
+RECIPIENT_CHAT_IDS = [
+    "632084234",  # Recipient 1
+]
 #For EC2 False by Default
 should_stop_ec2_on_exit = False
 # Define Timezones
@@ -137,12 +143,8 @@ def is_market_holiday():
         return False
     today = datetime.today().strftime("%d%b%y")  # Format like 26Feb25
     return today in holidays
-
+""" TWILIO IS NOT WORKING SO REPLACING THE FEATURE
 def send_whatsapp_message(message_body):
-    """
-    Sends a WhatsApp message using Twilio API.
-    :param message_body: The message content to send.
-    """
     recipients = [
         'whatsapp:+919042528367',  # Recipient 1
         'whatsapp:+918012991200'   # Recipient 2 (add as many as needed)
@@ -157,6 +159,26 @@ def send_whatsapp_message(message_body):
         log_and_print(f"WhatsApp Message Sent: {message_body}")
     except Exception as e:
         log_and_print(f"Failed to send message: {e}")
+"""
+def send_whatsapp_message(message_body):
+    """
+    Sends a message using Telegram Bot API to multiple recipients.
+    :param message_body: The message content to send.
+    """
+    try:
+        for chat_id in RECIPIENT_CHAT_IDS:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": message_body
+            }
+            response = requests.post(url, data=payload)
+            if response.status_code == 200:
+                log_and_print(f"Telegram Message Sent to {chat_id}: {message_body}")
+            else:
+                log_and_print(f"Failed to send Telegram message to {chat_id}: {response.text}")
+    except Exception as e:
+        log_and_print(f"Error sending Telegram message: {e}")
 
 def get_current_ist_time():
     """Returns the current time in IST."""
