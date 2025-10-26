@@ -8,7 +8,7 @@ from twilio.rest import Client
 import os
 import platform
 import getpass
-
+import requests
 # ------------------ Platform-Specific Path Setup ------------------ #
 system_platform = platform.system()
 current_user = getpass.getuser()
@@ -60,9 +60,16 @@ LOT_SIZE = 75  # Quantity per lot
 account_sid = 'AC6ef902b81d63731c13b746613aadb2aa'
 auth_token = '06c408e1a82a20ae2b839f2cceac4705'
 
+#For Telegram Bot
+BOT_TOKEN = "8313800040:AAFbD8M5e6g8OF2SlGJzgfM9c9oyfZyah6c"
+# List of Telegram Chat IDs (Replace with actual chat IDs of your recipients)
+RECIPIENT_CHAT_IDS = [
+    "632084234",  # Recipient 1
+]
+
 smart_api = SmartConnect(api_key=API_KEY)
 client = Client(account_sid, auth_token)
-
+"""
 def send_whatsapp_message(message_body):
     recipients = [
         'whatsapp:+919042528367',
@@ -78,6 +85,26 @@ def send_whatsapp_message(message_body):
         print(f"✅ WhatsApp message sent: {message_body}")
     except Exception as e:
         print(f"❌ Failed to send WhatsApp message: {e}")
+"""
+def send_whatsapp_message(message_body):
+    """
+    Sends a message using Telegram Bot API to multiple recipients.
+    :param message_body: The message content to send.
+    """
+    try:
+        for chat_id in RECIPIENT_CHAT_IDS:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": message_body
+            }
+            response = requests.post(url, data=payload)
+            if response.status_code == 200:
+                print(f"Telegram Message Sent to {chat_id}: {message_body}")
+            else:
+                print(f"Failed to send Telegram message to {chat_id}: {response.text}")
+    except Exception as e:
+        print(f"Error sending Telegram message: {e}")
 
 def login():
     global smart_api
