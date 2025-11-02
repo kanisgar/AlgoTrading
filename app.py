@@ -14,10 +14,13 @@ from twilio.rest import Client
 import sys
 import requests
 # 🔹 Credentials & Configurations
-API_KEY = 'I39xpH90'
+#API_KEY = 'I39xpH90' MODIFY THE CACHE FILES NAME ACCORDINGLY FOR THE USER
+API_KEY = 'hF0cGbte'
 PASSWORD = '1611'
-CLIENT_CODE = 'AAAI570791'
-TOTP_SECRET = 'ZXI5JF7SKHJND6W2XCBHYPLEJU'
+#CLIENT_CODE = 'AAAI570791'
+CLIENT_CODE = 'AAAO459213'
+#TOTP_SECRET = 'ZXI5JF7SKHJND6W2XCBHYPLEJU'
+TOTP_SECRET = '5NKNRIWMHTN47ZWH5GK2WKTYKM'
 account_sid = 'AC6ef902b81d63731c13b746613aadb2aa'
 auth_token = '06c408e1a82a20ae2b839f2cceac4705'  # Replace with actual token
 current_date = datetime.now().strftime("%Y-%m-%d")
@@ -91,8 +94,8 @@ os.makedirs(os.path.dirname(log_path), exist_ok=True)
 shared_utils_path = os.path.join(holiday_location, "common")
 sys.path.append(shared_utils_path)
 from get_cached_order_book import get_order_book
-CACHE_FILE = os.path.join(shared_utils_path, "orderbook_cache.json")
-LOCK_FILE = os.path.join(shared_utils_path, "orderbook_cache.lock")
+CACHE_FILE = os.path.join(shared_utils_path, "orderbook_cache_kulo.json")
+LOCK_FILE = os.path.join(shared_utils_path, "orderbook_cache_kulo.lock")
 
 # Configure logging
 logging.basicConfig(

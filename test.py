@@ -1,148 +1,168 @@
-import sys
-import pyotp
-import time
-import pytz
-from SmartApi import SmartConnect
-from datetime import datetime, timedelta
-from twilio.rest import Client
 import os
+import pyotp
 import platform
 import getpass
 import requests
-# ------------------ Platform-Specific Path Setup ------------------ #
+from datetime import datetime
+from SmartApi import SmartConnect
+import time
+
+# ------------------ Config (edit only if needed) ------------------ #
+# Telegram
+BOT_TOKEN = "8313800040:AAFbD8M5e6g8OF2SlGJzgfM9c9oyfZyah6c"
+CHAT_IDS = ["632084234"]
+
+# Accounts (two)
+accounts = [
+    {
+        "label": "Account 1",
+        "API_KEY": "I39xpH90",
+        "PASSWORD": "1611",
+        "CLIENT_CODE": "AAAI570791",
+        "TOTP_SECRET": "ZXI5JF7SKHJND6W2XCBHYPLEJU"
+    },
+    {
+        "label": "Account 2",
+        "API_KEY": "hF0cGbte",
+        "PASSWORD": "1611",
+        "CLIENT_CODE": "AAAO459213",
+        "TOTP_SECRET": "5NKNRIWMHTN47ZWH5GK2WKTYKM"
+    }
+]
+
+# Platform paths
 system_platform = platform.system()
 current_user = getpass.getuser()
 
 if system_platform == "Windows":
     holiday_location = "C:\\Kani_Personal\\Automate_Trading\\AlgoTrading\\"
-    log_path = f"C:/Kani_Personal/Automate_Trading/Option_Selling_Vikas/job_logs/job_option_selling_vikas_{datetime.now().strftime('%Y-%m-%d')}.txt"
-
-elif system_platform == "Darwin":  # Mac
+    log_path = f"C:/Kani_Personal/Automate_Trading/Option_Selling_Vikas/job_logs/job_balance_check_{datetime.now().strftime('%Y-%m-%d')}.txt"
+elif system_platform == "Darwin":
     holiday_location = "/Users/kanisgar/Documents/AlgoTrading/"
-    log_path = f"/Users/kanisgar/Documents/Option_Selling_Vikas/job_logs/job_option_selling_vikas_{datetime.now().strftime('%Y-%m-%d')}.txt"
+    log_path = f"/Users/kanisgar/Documents/Option_Selling_Vikas/job_logs/job_balance_check_{datetime.now().strftime('%Y-%m-%d')}.txt"
+else:
+    holiday_location = f"/home/{current_user}/AlgoTrading/"
+    log_path = f"{holiday_location}Option_Selling_Vikas/job_logs/job_balance_check_{datetime.now().strftime('%Y-%m-%d')}.txt"
 
-elif system_platform == "Linux":
-    if current_user == "ec2-user":
-        holiday_location = "/home/ec2-user/AlgoTrading/"
-        log_path = f"/home/ec2-user/Option_Selling_Vikas/job_logs/job_option_selling_vikas_{datetime.now().strftime('%Y-%m-%d')}.txt"
-
-# ------------------ Shared Utils Path ------------------ #
 shared_utils_path = os.path.join(holiday_location, "common")
-sys.path.append(shared_utils_path)
+os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
-CACHE_FILE = os.path.join(shared_utils_path, "orderbook_cache.json")
-LOCK_FILE = os.path.join(shared_utils_path, "orderbook_cache.lock")
-
-# ------------------ Logging Function ------------------ #
+# ------------------ Simple logging ------------------ #
 def log(msg):
-    with open(log_path, "a") as log_f:
-        log_f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {msg}\n")
-    print(msg)
-
-# ------------------ Cache Cleanup ------------------ #
-def remove_file_if_exists(file_path):
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"{ts} - {msg}"
+    print(line)
     try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            #log(f"✅ Removed: {file_path}")
+        with open(log_path, "a") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+# ------------------ File removal helper ------------------ #
+def remove_file_if_exists(path):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+            log(f"Removed file: {path}")
         else:
-            print(f"ℹ️ File not found: {file_path}")
+            log(f"File not found (skip): {path}")
     except Exception as e:
-        print(f"❌ Error removing {file_path}: {str(e)}")
+        log(f"Error removing {path}: {e}")
 
-# ------------------ Twilio & SmartAPI Setup ------------------ #
-API_KEY = 'I39xpH90'
-PASSWORD = '1611'
-CLIENT_CODE = 'AAAI570791'
-TOTP_SECRET = 'ZXI5JF7SKHJND6W2XCBHYPLEJU'
-LOT_SIZE = 75  # Quantity per lot
-
-account_sid = 'AC6ef902b81d63731c13b746613aadb2aa'
-auth_token = '06c408e1a82a20ae2b839f2cceac4705'
-
-#For Telegram Bot
-BOT_TOKEN = "8313800040:AAFbD8M5e6g8OF2SlGJzgfM9c9oyfZyah6c"
-# List of Telegram Chat IDs (Replace with actual chat IDs of your recipients)
-RECIPIENT_CHAT_IDS = [
-    "632084234",  # Recipient 1
-]
-
-smart_api = SmartConnect(api_key=API_KEY)
-client = Client(account_sid, auth_token)
-"""
-def send_whatsapp_message(message_body):
-    recipients = [
-        'whatsapp:+919042528367',
-        'whatsapp:+918012991200'
-    ]
-    try:
-        for r in recipients:
-            message = client.messages.create(
-                from_='whatsapp:+14155238886',
-                to=r,
-                body=message_body
+# ------------------ Telegram ------------------ #
+def send_telegram(msg):
+    for chat_id in CHAT_IDS:
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                data={"chat_id": chat_id, "text": msg}
             )
-        print(f"✅ WhatsApp message sent: {message_body}")
-    except Exception as e:
-        print(f"❌ Failed to send WhatsApp message: {e}")
-"""
-def send_whatsapp_message(message_body):
-    """
-    Sends a message using Telegram Bot API to multiple recipients.
-    :param message_body: The message content to send.
-    """
+        except Exception as e:
+            log(f"Telegram send error: {e}")
+
+# ------------------ Core: login, fetch, logout ------------------ #
+def fetch_profile_and_balance(acct):
+    smart_api = None
+    session = None
     try:
-        for chat_id in RECIPIENT_CHAT_IDS:
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            payload = {
-                "chat_id": chat_id,
-                "text": message_body
-            }
-            response = requests.post(url, data=payload)
-            if response.status_code == 200:
-                print(f"Telegram Message Sent to {chat_id}: {message_body}")
-            else:
-                print(f"Failed to send Telegram message to {chat_id}: {response.text}")
+        log(f"Starting login for {acct['CLIENT_CODE']}")
+        smart_api = SmartConnect(api_key=acct["API_KEY"])
+        totp = pyotp.TOTP(acct["TOTP_SECRET"]).now()
+        session = smart_api.generateSession(acct["CLIENT_CODE"], acct["PASSWORD"], totp)
+
+        if not session.get("status"):
+            raise Exception(f"Login failed: {session.get('message', 'No message')}")
+
+        refresh_token = session["data"].get("refreshToken")
+        profile = smart_api.getProfile(refresh_token)
+        profile_name_full = profile.get("data", {}).get("name", "Unknown")
+        profile_name = profile_name_full.strip().split()[0] if profile_name_full.strip() else "Unknown"
+        funds = smart_api.rmsLimit()
+        available_cash = funds.get("data", {}).get("availablecash", None)
+        if available_cash is None:
+            raise Exception("rmsLimit returned no availablecash")
+
+        try:
+            balance = int(float(available_cash))
+        except Exception:
+            balance = available_cash
+
+        log(f"Fetched for {acct['CLIENT_CODE']}: {profile_name} - {balance}")
+        return {"client": acct["CLIENT_CODE"], "name": profile_name, "balance": balance, "error": None}
     except Exception as e:
-        print(f"Error sending Telegram message: {e}")
-
-def login():
-    global smart_api
-    totp = pyotp.TOTP(TOTP_SECRET).now()
-    session = smart_api.generateSession(CLIENT_CODE, PASSWORD, totp)
-    if session.get("status") is True:
-        print("✅ Login successful")
-    else:
-        send_whatsapp_message("❌ Login failed")
-        raise Exception(f"❌ Login failed: {session.get('message', 'Unknown error')}")
-
-def logout():
-    try:
-        if hasattr(smart_api, "access_token") and smart_api.access_token:
-            smart_api.terminateSession(CLIENT_CODE)
-            print("✅ Logout successful")
-        else:
-            print("⚠️ Not logged in. Skipping logout.")
-    except Exception as e:
-        print(f"❌ Logout failed: {str(e)}")
-
-def calculate_balance():
-    funds = smart_api.rmsLimit()
-    return int(float(funds["data"]["availablecash"]))
-
-# ------------------ Main ------------------ #
-if __name__ == "__main__":
-    print("🚀 Starting cache cleanup and balance check...")
-    remove_file_if_exists(CACHE_FILE)
-    remove_file_if_exists(LOCK_FILE)
-
-    try:
-        login()
-        funds = calculate_balance()
-        send_whatsapp_message(f"📈 Angel One balance is ₹{funds}")
-    except Exception as e:
-        send_whatsapp_message(f"❌ Error in balance check: {str(e)}")
-        print(f"❌ Error during execution: {str(e)}")
+        log(f"Error for {acct['CLIENT_CODE']}: {e}")
+        return {"client": acct["CLIENT_CODE"], "name": None, "balance": None, "error": str(e)}
     finally:
-        logout()
-        print("✅ Execution completed\n")
+        try:
+            if smart_api is not None:
+                smart_api.terminateSession(acct["CLIENT_CODE"])
+                log(f"Terminated session for {acct['CLIENT_CODE']}")
+        except Exception as e:
+            log(f"Error terminating session for {acct['CLIENT_CODE']}: {e}")
+
+# ------------------ MAIN ------------------ #
+if __name__ == "__main__":
+    log("Job started: cleaning cache and checking balances")
+
+    # ------------------ Cache Cleanup ------------------ #
+    # Prepare list of cache files (shared + per-user)
+    cache_files = [
+        os.path.join(shared_utils_path, "orderbook_cache.json"),
+        os.path.join(shared_utils_path, "orderbook_cache.lock"),
+        os.path.join(shared_utils_path, "orderbook_cache_kulo.json"),
+        os.path.join(shared_utils_path, "orderbook_cache_kulo.lock")
+    ]
+
+    """  # Add per-user cache files dynamically
+    for acct in accounts:
+        suffix = acct["CLIENT_CODE"].lower()
+        cache_files.append(os.path.join(shared_utils_path, f"orderbook_cache_{suffix}.json"))
+        cache_files.append(os.path.join(shared_utils_path, f"orderbook_cache_{suffix}.lock"))"""
+
+    # Remove all
+    for f in cache_files:
+        remove_file_if_exists(f)
+
+    # ------------------ Fetch Balances ------------------ #
+    results = []
+    for acct in accounts:
+        res = fetch_profile_and_balance(acct)
+        results.append(res)
+        time.sleep(1)  # avoid rate limit
+
+    # ------------------ Summary ------------------ #
+    lines = ["Angel One Balances:"]
+    for r in results:
+        if r["error"]:
+            lines.append(f"{r['client']}: ERROR - {r['error']}")
+        else:
+            try:
+                bal_str = f"₹{int(r['balance']):,}"
+            except Exception:
+                bal_str = str(r['balance'])
+            lines.append(f"{r['client']} ({r['name']}): {bal_str}")
+
+    message = "\n".join(lines)
+    log("Summary:\n" + message)
+    send_telegram(message)
+    log("Job finished.")
