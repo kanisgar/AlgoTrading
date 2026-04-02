@@ -21,14 +21,14 @@ accounts = [
         "CLIENT_CODE": "AAAI570791",
         "TOTP_SECRET": "ZXI5JF7SKHJND6W2XCBHYPLEJU"
     }
-    """,
-    {
-        "label": "Account 2",
-        "API_KEY": "hF0cGbte",
-        "PASSWORD": "1611",
-        "CLIENT_CODE": "AAAO459213",
-        "TOTP_SECRET": "5NKNRIWMHTN47ZWH5GK2WKTYKM"
-    }"""
+    #,
+    #{
+    #    "label": "Account 2",
+    #    "API_KEY": "hF0cGbte",
+    #    "PASSWORD": "1611",
+    #    "CLIENT_CODE": "AAAO459213",
+    #    "TOTP_SECRET": "5NKNRIWMHTN47ZWH5GK2WKTYKM"
+    #}
 ]
 
 # Platform paths
