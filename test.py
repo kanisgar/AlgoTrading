@@ -16,18 +16,18 @@ CHAT_IDS = ["632084234"]
 accounts = [
     {
         "label": "Account 1",
-        "API_KEY": "I39xpH90",
+        "API_KEY": "xgMtWyMS",
         "PASSWORD": "1611",
         "CLIENT_CODE": "AAAI570791",
         "TOTP_SECRET": "ZXI5JF7SKHJND6W2XCBHYPLEJU"
-    },
+    }""",
     {
         "label": "Account 2",
         "API_KEY": "hF0cGbte",
         "PASSWORD": "1611",
         "CLIENT_CODE": "AAAO459213",
         "TOTP_SECRET": "5NKNRIWMHTN47ZWH5GK2WKTYKM"
-    }
+    }"""
 ]
 
 # Platform paths
