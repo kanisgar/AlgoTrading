@@ -361,7 +361,11 @@ class TradeDataLogger:
         return max(0, int((now - entry_dt).total_seconds() / 60))
 
     def _fetch_nse_data(self):
-        """Single NSE allIndices call → returns (vix, prev_close)."""
+        """
+        Single NSE allIndices call → returns (vix, prev_close).
+        prev_close is NIFTY 50 for NIFTY instrument,
+        and S&P BSE SENSEX for SENSEX instrument.
+        """
         try:
             session = requests.Session()
             headers = {
@@ -375,14 +379,24 @@ class TradeDataLogger:
                 headers=headers, timeout=8
             )
             resp.raise_for_status()
-            vix = prev_close = None
+            vix        = None
+            prev_close = None
+
+            # Pick the right index name based on instrument
+            target_index = "NIFTY 50" if self.instrument == "NIFTY" else "S&P BSE SENSEX"
+
             for item in resp.json().get("data", []):
                 idx = item.get("index", "")
                 if idx == "INDIA VIX":
                     vix = float(item["last"])
-                if idx == "NIFTY 50":
+                if idx == target_index:
                     prev_close = float(item["previousClose"])
-            _logger.info(f"NSE fetch OK | VIX={vix} | PrevClose={prev_close}")
+
+            _logger.info(
+                f"NSE fetch OK | Instrument={self.instrument} | "
+                f"TargetIndex={target_index} | "
+                f"VIX={vix} | PrevClose={prev_close}"
+            )
             return vix, prev_close
         except Exception as e:
             _logger.error(f"NSE fetch FAILED: {e}")
