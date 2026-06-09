@@ -362,10 +362,17 @@ class TradeDataLogger:
 
     def _fetch_nse_data(self):
         """
-        Single NSE allIndices call → returns (vix, prev_close).
-        prev_close is NIFTY 50 for NIFTY instrument,
-        and S&P BSE SENSEX for SENSEX instrument.
+        Fetches VIX from NSE allIndices (always works).
+        For prev_close:
+          NIFTY  → NSE allIndices (NIFTY 50) — always present
+          SENSEX → NSE allIndices (S&P BSE SENSEX) during market hours
+                   Falls back to Yahoo Finance (^BSESN) if NSE returns None
+                   because NSE drops Sensex from allIndices after market close.
         """
+        vix        = None
+        prev_close = None
+
+        # ── Step 1: NSE allIndices for VIX + prev_close ──────────────────
         try:
             session = requests.Session()
             headers = {
@@ -379,28 +386,44 @@ class TradeDataLogger:
                 headers=headers, timeout=8
             )
             resp.raise_for_status()
-            vix        = None
-            prev_close = None
-
-            # Pick the right index name based on instrument
             target_index = "NIFTY 50" if self.instrument == "NIFTY" else "S&P BSE SENSEX"
-
             for item in resp.json().get("data", []):
                 idx = item.get("index", "")
                 if idx == "INDIA VIX":
                     vix = float(item["last"])
                 if idx == target_index:
                     prev_close = float(item["previousClose"])
-
             _logger.info(
                 f"NSE fetch OK | Instrument={self.instrument} | "
                 f"TargetIndex={target_index} | "
                 f"VIX={vix} | PrevClose={prev_close}"
             )
-            return vix, prev_close
         except Exception as e:
             _logger.error(f"NSE fetch FAILED: {e}")
-            return None, None
+
+        # ── Step 2: Yahoo Finance fallback for Sensex prev_close ─────────
+        # NSE drops S&P BSE SENSEX from allIndices after market close.
+        # Yahoo Finance always has it via ^BSESN previousClose.
+        if self.instrument == "SENSEX" and prev_close is None:
+            try:
+                resp_y = requests.get(
+                    "https://query1.finance.yahoo.com/v8/finance/chart/%5EBSESN?interval=1d&range=5d",
+                    headers={"User-Agent": "Mozilla/5.0"}, timeout=8
+                )
+                resp_y.raise_for_status()
+                result = resp_y.json().get("chart", {}).get("result", [])
+                if result:
+                    meta       = result[0].get("meta", {})
+                    prev_close = round(float(meta.get("previousClose", 0) or
+                                             meta.get("chartPreviousClose", 0)), 2)
+                    if prev_close:
+                        _logger.info(f"Yahoo fallback OK | Sensex PrevClose={prev_close}")
+                    else:
+                        _logger.warning("Yahoo fallback: previousClose is 0 or missing")
+            except Exception as e:
+                _logger.error(f"Yahoo fallback FAILED: {e}")
+
+        return vix, prev_close
 
     def _compute_risk(self, vix, gap_pct):
         """Returns (score, signal_string)."""
