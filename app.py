@@ -1,30 +1,64 @@
-import pyotp
-import time
-import pytz
-import logging
-from SmartApi import SmartConnect
-from datetime import datetime, timedelta
-from twilio.rest import Client
 import os
+from datetime import datetime, timedelta
+import pyotp
+from SmartApi import SmartConnect
+import pytz
 import time
 from collections import deque
+import logging
+import boto3
+import json
+import platform
+import getpass
+from twilio.rest import Client
+import sys
+import requests
 # 🔹 Credentials & Configurations
-API_KEY = 'I39xpH90'
+#API_KEY = 'I39xpH90' MODIFY THE CACHE FILES NAME ACCORDINGLY FOR THE USER
+API_KEY = 'hF0cGbte'
 PASSWORD = '1611'
-CLIENT_CODE = 'AAAI570791'
-TOTP_SECRET = 'ZXI5JF7SKHJND6W2XCBHYPLEJU'
+#CLIENT_CODE = 'AAAI570791'
+CLIENT_CODE = 'AAAO459213'
+#TOTP_SECRET = 'ZXI5JF7SKHJND6W2XCBHYPLEJU'
+TOTP_SECRET = '5NKNRIWMHTN47ZWH5GK2WKTYKM'
 account_sid = 'AC6ef902b81d63731c13b746613aadb2aa'
 auth_token = '06c408e1a82a20ae2b839f2cceac4705'  # Replace with actual token
 current_date = datetime.now().strftime("%Y-%m-%d")
 refresh_token = None
-
-
+#For Telegram Bot
+BOT_TOKEN = "8313800040:AAFbD8M5e6g8OF2SlGJzgfM9c9oyfZyah6c"
+# List of Telegram Chat IDs (Replace with actual chat IDs of your recipients)
+RECIPIENT_CHAT_IDS = [
+    "632084234",  # Recipient 1
+]
+#For EC2 False by Default
+should_stop_ec2_on_exit = False
 # Define Timezones
 finland_tz = pytz.timezone("Europe/Helsinki")  # Laptop time
 india_tz = pytz.timezone("Asia/Kolkata")  # IST timezone
 
 # Initialize SmartConnect
 smart_api = SmartConnect(api_key=API_KEY)
+
+def trigger_ec2_shutdown_lambda():
+    FUNCTION_NAME = "stopEC2Instance"
+    INSTANCE_ID = "i-0bc461a1bc178f190"
+    
+    payload = {
+        "instance_id": INSTANCE_ID
+    }
+
+    try:
+        lambda_client = boto3.client("lambda", region_name="us-east-1")  # Adjust your region
+        response = lambda_client.invoke(
+            FunctionName=FUNCTION_NAME,
+            InvocationType="Event",  # Async execution
+            Payload=json.dumps(payload).encode('utf-8')
+        )
+        print("🛑 EC2 shutdown Lambda triggered successfully.")
+    except Exception as e:
+        print(f"⚠️ Failed to trigger Lambda: {e}")
+
 
 def on_session_expiry():
     log_and_print("⚠️ Session expired! Re-authenticating via hook...")
@@ -36,12 +70,32 @@ client = Client(account_sid, auth_token)
 #For Trade
 LOT_SIZE=75
 risk_min=2000
-risk_max=2500
-def_buy_qty=225
-holiday_location="C:\Kani_Personal\Automate_Trading\AlgoTrading\\"
+risk_max=2700
+def_buy_qty=75
+system_platform = platform.system()
+current_user = getpass.getuser()
 
-log_path = f"C:/Kani_Personal/Automate_Trading/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
+if system_platform == "Windows":
+    holiday_location = "C:\\Kani_Personal\\Automate_Trading\\AlgoTrading\\"
+    log_path = f"C:/Kani_Personal/Automate_Trading/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
+
+elif system_platform == "Darwin":  # Mac
+    holiday_location = "/Users/kanisgar/Documents/AlgoTrading/"
+    log_path = f"/Users/kanisgar/Documents/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
+
+elif system_platform == "Linux":
+    if current_user == "ec2-user":
+        holiday_location = "/home/ec2-user/AlgoTrading/"
+        log_path = f"/home/ec2-user/AlgoTrading/job_logs/job_{datetime.now().strftime('%Y-%m-%d')}.txt"
+        should_stop_ec2_on_exit = False
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+# 🔁 Use the holiday_location to build shared path
+shared_utils_path = os.path.join(holiday_location, "common")
+sys.path.append(shared_utils_path)
+from get_cached_order_book import get_order_book
+CACHE_FILE = os.path.join(shared_utils_path, "orderbook_cache_kulo.json")
+LOCK_FILE = os.path.join(shared_utils_path, "orderbook_cache_kulo.lock")
 
 # Configure logging
 logging.basicConfig(
@@ -80,9 +134,7 @@ def calculate_quantity_with_risk(entry_price):
         return def_buy_qty
     except Exception as e:
         log_and_print(f"Error in calculate_quantity_with_risk: {e}", "error")
-        return def_buy_qty
-    finally:
-        log_and_print(f"The buy quantity is {def_buy_qty}") 
+        return def_buy_qty 
     
 def is_market_holiday():
     holiday_file = holiday_location + "nifty_expiry_holidays.txt"  
@@ -94,12 +146,8 @@ def is_market_holiday():
         return False
     today = datetime.today().strftime("%d%b%y")  # Format like 26Feb25
     return today in holidays
-
+""" TWILIO IS NOT WORKING SO REPLACING THE FEATURE
 def send_whatsapp_message(message_body):
-    """
-    Sends a WhatsApp message using Twilio API.
-    :param message_body: The message content to send.
-    """
     recipients = [
         'whatsapp:+919042528367',  # Recipient 1
         'whatsapp:+918012991200'   # Recipient 2 (add as many as needed)
@@ -114,6 +162,26 @@ def send_whatsapp_message(message_body):
         log_and_print(f"WhatsApp Message Sent: {message_body}")
     except Exception as e:
         log_and_print(f"Failed to send message: {e}")
+"""
+def send_whatsapp_message(message_body):
+    """
+    Sends a message using Telegram Bot API to multiple recipients.
+    :param message_body: The message content to send.
+    """
+    try:
+        for chat_id in RECIPIENT_CHAT_IDS:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": message_body
+            }
+            response = requests.post(url, data=payload)
+            if response.status_code == 200:
+                log_and_print(f"Telegram Message Sent to {chat_id}: {message_body}")
+            else:
+                log_and_print(f"Failed to send Telegram message to {chat_id}: {response.text}")
+    except Exception as e:
+        log_and_print(f"Error sending Telegram message: {e}")
 
 def get_current_ist_time():
     """Returns the current time in IST."""
@@ -163,14 +231,18 @@ def get_order_status_from_book(order_id):
     Fetch order status from Angel One order book.
     Returns the order status as a string or "UNKNOWN" if not found.
     """
-    order_book = smart_api.orderBook()  # Fetch all orders
-    
-    if order_book and order_book.get("data"):  # Ensure we have valid data
-        for order in order_book["data"]:  # Loop through orders
-            if order.get("orderid") == order_id:
-                return order.get("status", "UNKNOWN")  # Return status if found
-    
-    return "UNKNOWN"  # Default if order is not found
+    try:
+        order_book = get_order_book(smart_api, CACHE_FILE, LOCK_FILE)  # Fetch all orders     
+        if order_book and order_book.get("data"):  # Ensure we have valid data
+            for order in order_book["data"]:  # Loop through orders
+                if str(order.get("orderid")) == str(order_id):
+                    return order.get("status", "UNKNOWN")  # Return status if found                
+        log_and_print(f"⚠️ Order ID {order_id} not found in order book.")
+    except Exception as e:
+        log_and_print(f"❌ Error fetching status for order ID {order_id}: {e}")
+        send_whatsapp_message(f"Error fetching status for order ID {order_id}: {e}")
+    return "UNKNOWN"  # Default if order is not found or exception occurs
+
 
 def get_nifty_atm():
     """Fetches the nearest ATM strike price for NIFTY."""
@@ -226,12 +298,12 @@ def get_ltp(symbol, symbol_token):
         log_and_print(f"❌ Failed to get LTP for Symbol:{symbol} and Symbol Token:{symbol_token} and exception is {e} ")
 
 def place_order(symbol, action, quantity, price, symboltoken, ordertype):
-    """Places a market order for the given symbol."""
+    """Places a market order for the given symbol. Retries once if order_response is None."""
     try:
         if ordertype in ["MARKET", "LIMIT"]:
-           variety = "NORMAL"
+            variety = "NORMAL"
         else:
-           variety = "STOPLOSS"
+            variety = "STOPLOSS"     
         order_params = {
             "exchange": "NFO",
             "variety": variety,
@@ -240,23 +312,32 @@ def place_order(symbol, action, quantity, price, symboltoken, ordertype):
             "transactiontype": action,  # 'BUY' or 'EXIT'
             "quantity": quantity,
             "price": price,
-            "triggerprice":price,
-            "ordertype":ordertype,
+            "triggerprice": price,
+            "ordertype": ordertype,
             "producttype": "INTRADAY",
             "duration": "DAY"
         }
         order_response = smart_api.placeOrder(order_params)
+        if order_response is None:
+            log_and_print("⚠️ order_response is None. Attempting re-login and retry...")
+            login()
+            order_response = smart_api.placeOrder(order_params)
         return order_response
+
     except Exception as e:
+        send_whatsapp_message(f"❌ Failed to place order: {e}")
+        log_and_print(f"❌ Failed to place order: {e}")
         raise Exception(f"❌ Failed to place order: {e}")
-        send_whatsapp_message(f"❌ Failed to place order : {e}")
-        log_and_print(f"❌ Failed to place order : {e}")
-        return None
+
 
 def cancel_order(order_id):
     """Cancel the order by its order ID."""
     try:
         cancel_response = smart_api.cancelOrder(str(order_id), "STOPLOSS")
+        if cancel_response is None:
+            log_and_print("⚠️ cancel_response is None. Attempting re-login and retry...")
+            login()
+            cancel_response = smart_api.cancelOrder(str(order_id), "STOPLOSS")
         return cancel_response
     except Exception as e:
         send_whatsapp_message(f"❌ DO MANUALLY; Failed to cancel order {order_id}: {e}")
@@ -270,11 +351,11 @@ def get_expiry_day():
     if os.path.exists(holiday_file):
         with open(holiday_file, "r") as file:
             holidays = [line.strip() for line in file.readlines()]
-    if today.weekday() == 3 and today.strftime("%d%b%y") not in holidays:
+    if today.weekday() == 1 and today.strftime("%d%b%y") not in holidays:
         expiry_day = today
     else:
-        # Find next Thursday (weekday = 3)
-        days_ahead = (3 - today.weekday() + 7) % 7
+        # Find next Tuesday (weekday = 1)
+        days_ahead = (1 - today.weekday() + 7) % 7
         expiry_day = today + timedelta(days=days_ahead)
         # Adjust expiry_day if it's a holiday or falls on weekend
         while expiry_day.strftime("%d%b%y") in holidays or expiry_day.weekday() in [5, 6]:
@@ -284,23 +365,25 @@ def get_expiry_day():
 def get_executed_price(order_id):
     """Fetch the exact executed price for a specific order ID."""
     try:
-        all_orders = smart_api.orderBook()  # Get the list of all today's orders
+        time.sleep(1)
+        all_orders = get_order_book(smart_api, CACHE_FILE, LOCK_FILE)  # Get the list of all today's orders
         if all_orders.get("status"):
             orders = all_orders["data"]
             for order in orders:
-                if order.get("orderid") == order_id:
-                    if order.get("orderstatus").lower() == "complete":
+                if str(order.get("orderid")) == str(order_id):
+                    status = order.get("orderstatus", "").strip().lower()
+                    if status == "complete":
                         executed_price = float(order.get("averageprice"))
-                        log_and_print(f" The order executed price is {executed_price}")
                         return executed_price
                     else:
                         log_and_print(f"⚠️ Order ID {order_id} is not fully complete yet. Status: {order.get('orderstatus')}")
                         return None
+            log_and_print(f"⚠️ Order ID {order_id} not found in order book.")
         else:
             log_and_print("⚠️ No order data received from orderBook()")
     except Exception as e:
         log_and_print(f"❌ Failed to fetch executed price for order ID {order_id}: {e}")
-        send_whatsapp_message(f"❌ Failed to fetch executed price for order ID {order_id}: {e}")
+        send_whatsapp_message(f"Failed to fetch executed price for order ID {order_id}: {e}")
     return None
 
 def get_day_high(symbol, symbol_token):
@@ -336,6 +419,14 @@ def track_highs_until_1000(ce_symbol, ce_symbol_token, pe_symbol, pe_symbol_toke
     log_and_print(f"✅ 10:00 AM Highs Locked - CE: {high_ce}, PE: {high_pe}")
     return high_ce, high_pe
 
+def get_breakout_percentage(high_price):
+    if high_price > 100:
+        return 0.95
+    elif 50 < high_price <= 100:
+        return 0.92
+    else:
+        return 0.86
+
 def run_strategy():
     """Runs the trading strategy."""
     log_and_print("🔄 Running strategy...")
@@ -347,7 +438,7 @@ def run_strategy():
 
     if "08:00" <= current_time < "10:00":
         # Execute automated flow before 10:00 AM
-        wait_until_ist("09:55")  # Wait until 9:55 AM
+        wait_until_ist("09:58")  # Wait until 9:58 AM
         if not is_logged_in(refresh_token):
             log_and_print("Session expired, re-authenticating before order placing...")
             login()
@@ -386,8 +477,12 @@ def run_strategy():
             return  # Exit script immediately
 
     log_and_print("📈 Monitoring breakout after 10:01 AM...")
-    send_whatsapp_message(f"🔔{current_date}: 10:00 AM Highs Locked:\n📈 CE({ce_symbol}): {high_ce}\n📉 PE({pe_symbol}): {high_pe}.\nWaiting for Breakout after 10:01 AM")
-
+    #Calculation the breakout threshold value for entry    
+    ce_breakout_threshold = round(high_ce * get_breakout_percentage(high_ce) * 10) / 10
+    pe_breakout_threshold = round(high_pe * get_breakout_percentage(high_pe) * 10) / 10
+    
+    send_whatsapp_message(f"🔔{current_date}: 10:00 AM Highs Locked:\n📈 CE({ce_symbol}): {high_ce} and ce_threshold is :{ce_breakout_threshold}\n📉 PE({pe_symbol}): {high_pe} and pe_breakout_threshold is : {pe_breakout_threshold}.\nWaiting for Breakout after 10:01 AM")
+    
     active_trade = None  # Track active CE or PE trade
     ce_order_id = None
     pe_order_id = None
@@ -395,74 +490,158 @@ def run_strategy():
     stop_loss_order_id = None
     pending_order_logged = False
     exit_order_logged = False
-    quantity_buy = 225
+    quantity_buy = 75
     start_time = datetime.now()
     order_type_placed = None
     entry_price = None
+    trade_order_id = None
     while True:
         current_time = datetime.now()
         elapsed_time = current_time - start_time
         if elapsed_time >= timedelta(hours=5):
-            log_and_print("🛑 5 hours completed. Exiting the loop.")
-            send_whatsapp_message("🛑 5 hours completed. Exiting the loop.")
-            break
+            if active_trade is None:
+                log_and_print("🛑 5 hours completed. No active trade. Exiting the loop. Trying to cancel the pending orders")
+                if ce_order_id:
+                    try:
+                        cancel_order(ce_order_id)
+                        log_and_print("🗑️ Pending CE order cancelled before exit.")
+                    except Exception as e:
+                        log_and_print(f"⚠️ Failed to cancel pending CE order: {e}")
+                        send_whatsapp_message(f"⚠️ Failed to cancel pending CE order: {e}")
+                if pe_order_id:
+                    try:
+                        cancel_order(pe_order_id)
+                        log_and_print("🗑️ Pending PE order cancelled before exit.")
+                    except Exception as e:
+                        log_and_print(f"⚠️ Failed to cancel pending PE order: {e}")
+                        send_whatsapp_message(f"⚠️ Failed to cancel pending PE order: {e}")
+                send_whatsapp_message("🛑 5 hours completed.should have cancelled the pending orders. But please check once.")
+                if should_stop_ec2_on_exit:
+                    log_and_print("Closing the EC2 instance")
+                    trigger_ec2_shutdown_lambda()
+                break
+            else:
+                if grace_period_start_time is None:
+                    grace_period_start_time = current_time
+                    log_and_print("⏳ 5 hours done, but active trade exists. Starting 10-min grace period...")
+                    send_whatsapp_message("⏳ Active trade found after 5 hours. Will square off in 10 mins if still open.")
+                elif current_time - grace_period_start_time >= timedelta(minutes=10):
+                    log_and_print("🚨 Grace period over. Forcing square-off.")
+                    send_whatsapp_message("🚨 Grace period over. Squaring off active trade.")
+        
+                    # Cancel target and SL orders if present
+                    if target_order_id:
+                        try:
+                            cancel_order(target_order_id)
+                            log_and_print("🗑️ Target order cancelled.")
+                        except Exception as e:
+                            log_and_print(f"⚠️ Failed to cancel target order: {e}")
+                            send_whatsapp_message(f"⚠️ Failed to cancel target order: {e}")
+                    if stop_loss_order_id:
+                        try:
+                            cancel_order(stop_loss_order_id)
+                            log_and_print("🗑️ Stop-loss order cancelled.")
+                        except Exception as e:
+                            log_and_print(f"⚠️ Failed to cancel SL order: {e}")
+                            send_whatsapp_message(f"⚠️ Failed to cancel SL order: {e}")
+                    if active_trade == "CE":
+                        place_order(ce_symbol, "SELL", quantity_buy, None, ce_symbol_token, "MARKET")
+                        log_and_print(f"✅ Force-squared CE position: {ce_symbol}")
+                    elif active_trade == "PE":
+                        place_order(pe_symbol, "SELL", quantity_buy, None, pe_symbol_token, "MARKET")
+                        log_and_print(f"✅ Force-squared PE position: {pe_symbol}")
+                    send_whatsapp_message("✅ Position squared off forcefully after grace period.")
+                    if should_stop_ec2_on_exit:
+                        log_and_print("Closing the EC2 instance")
+                        trigger_ec2_shutdown_lambda()
+                    break
         ce_ltp = get_ltp(ce_symbol, ce_symbol_token)
         pe_ltp = get_ltp(pe_symbol, pe_symbol_token)
 
         if active_trade is None:  # No active trade
-            if ce_ltp and ce_ltp >= high_ce * 0.97:
-                quantity_buy = calculate_quantity_with_risk(high_ce + 0.20)
-                if ce_ltp > high_ce:
-                    log_and_print(f"🚀 CE breakout confirmed. Placing MARKET order.")
-                    ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, None, ce_symbol_token, "MARKET")
-                    order_type_placed = "MARKET"
-                    send_whatsapp_message(f"🚀{current_date}: CE breakout confirmed. Placing MARKET order.")
-                else:
-                    log_and_print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
-                    ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, high_ce + 0.20, ce_symbol_token, "STOPLOSS_LIMIT")
-                    order_type_placed = "STOPLOSS_LIMIT"
-                    send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}")
-                active_trade = "CE"
-
-            elif pe_ltp and pe_ltp >= high_pe * 0.97:
-                quantity_buy = calculate_quantity_with_risk(high_pe + 0.20)
-                if pe_ltp > high_pe:
-                    log_and_print(f"🚀 PE breakout confirmed. Placing MARKET order.")
-                    pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, None, pe_symbol_token, "MARKET")
-                    order_type_placed = "MARKET"
-                    send_whatsapp_message(f"🚀{current_date}: PE breakout confirmed. Placing MARKET order.")
-                else:
-                    log_and_print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
-                    pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, high_pe + 0.20, pe_symbol_token, "STOPLOSS_LIMIT")
-                    order_type_placed = "STOPLOSS_LIMIT"
-                    send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}")
-                active_trade = "PE"
+           if ce_ltp and ce_ltp >= ce_breakout_threshold and ce_order_id is None:
+               quantity_buy = calculate_quantity_with_risk(high_ce + 0.20)
+               if ce_ltp > high_ce:
+                   log_and_print(f"🚀 CE breakout confirmed. Placing MARKET order.")
+                   if pe_order_id:
+                       cancel_order(pe_order_id)
+                       pe_order_id = None
+                       log_and_print(f"❌ PE order cancelled before CE execution")                   
+                   ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, None, ce_symbol_token, "MARKET")
+                   order_type_placed = "MARKET"
+                   log_and_print(f"🚀{current_date}: CE breakout confirmed. Placing MARKET order.")
+                   send_whatsapp_message(f"🚀{current_date}: CE breakout confirmed. Placing MARKET order.")
+               else:
+                   log_and_print(f"🚀 Placing CE Limit Order at {high_ce + 0.20}")
+                   if pe_order_id:
+                       cancel_order(pe_order_id)
+                       pe_order_id = None
+                       log_and_print(f"❌ PE order cancelled before CE execution")                   
+                   ce_order_id = place_order(ce_symbol, "BUY", quantity_buy, high_ce + 0.20, ce_symbol_token, "STOPLOSS_LIMIT")
+                   order_type_placed = "STOPLOSS_LIMIT"
+                   log_and_print(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}. Order {ce_order_id} not yet executed")
+                   send_whatsapp_message(f"🚀{current_date}: Placing BUY CE({ce_symbol}) Limit Order at {high_ce + 0.20}. Order {ce_order_id} not yet executed")
+           
+           if pe_ltp and pe_ltp >= pe_breakout_threshold and pe_order_id is None:
+               quantity_buy = calculate_quantity_with_risk(high_pe + 0.20)
+               if pe_ltp > high_pe:
+                   log_and_print(f"🚀 PE breakout confirmed. Placing MARKET order.")
+                   if ce_order_id:
+                       cancel_order(ce_order_id)
+                       ce_order_id = None
+                       log_and_print(f"❌ CE order cancelled before PE execution")                   
+                   pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, None, pe_symbol_token, "MARKET")
+                   order_type_placed = "MARKET"
+                   log_and_print(f"🚀{current_date}: PE breakout confirmed. Placing MARKET order.")
+                   send_whatsapp_message(f"🚀{current_date}: PE breakout confirmed. Placing MARKET order.")
+               else:
+                   log_and_print(f"🚀 Placing PE Limit Order at {high_pe + 0.20}")
+                   if ce_order_id:
+                       cancel_order(ce_order_id)
+                       ce_order_id = None
+                       log_and_print(f"❌ CE order cancelled before PE execution")                   
+                   pe_order_id = place_order(pe_symbol, "BUY", quantity_buy, high_pe + 0.20, pe_symbol_token, "STOPLOSS_LIMIT")
+                   order_type_placed = "STOPLOSS_LIMIT"
+                   log_and_print(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}. Order {pe_order_id} not yet executed")
+                   send_whatsapp_message(f"🚀{current_date}: Placing BUY PE({pe_symbol}) Limit Order at {high_pe + 0.20}. Order {pe_order_id} not yet executed")
+                   
+           if ce_order_id:
+               ce_status = get_order_status_from_book(ce_order_id)
+               if ce_status in ["complete", "executed"]:
+                   active_trade = "CE"
+                   trade_order_id = ce_order_id
+                   if order_type_placed == "MARKET" and entry_price is None:
+                       entry_price = get_executed_price(ce_order_id)
+                   else:
+                       entry_price = high_ce + 0.20
+                   stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
+                   stop_loss_price = "{:.2f}".format(stop_loss_price_trigger)
+                   stop_loss_order_id  = place_order(ce_symbol, "SELL", quantity_buy, stop_loss_price, ce_symbol_token,"STOPLOSS_LIMIT")
+                   if stop_loss_order_id:
+                       log_and_print(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Placed SL order {stop_loss_order_id} for safety at {stop_loss_price}. Proceeding with exit orders")
+                       send_whatsapp_message(f"✅ CE order {ce_order_id} executed. Setting active_trade to CE. Proceeding with exit orders")
+                    
+           elif pe_order_id:
+               pe_status = get_order_status_from_book(pe_order_id)
+               if pe_status in ["complete", "executed"]:
+                   active_trade = "PE"
+                   trade_order_id = pe_order_id
+                   if order_type_placed == "MARKET" and entry_price is None:
+                       entry_price = get_executed_price(pe_order_id)
+                   else:
+                       entry_price = high_pe + 0.20
+                   stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
+                   stop_loss_price = "{:.2f}".format(stop_loss_price_trigger)
+                   stop_loss_order_id  = place_order(pe_symbol, "SELL", quantity_buy, stop_loss_price, pe_symbol_token,"STOPLOSS_LIMIT")
+                   if stop_loss_order_id:
+                       log_and_print(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Placed SL order {stop_loss_order_id} for safety at {stop_loss_price}.Proceeding with exit orders")
+                       send_whatsapp_message(f"✅ PE order {pe_order_id} executed. Setting active_trade to PE. Proceeding with exit orders")
 
         else:  # Active trade exists, monitor SL & Target exit
-            trade_order_id = ce_order_id if active_trade == "CE" else pe_order_id
-            order_status = get_order_status_from_book(trade_order_id)
-
-            if order_status not in ["complete", "executed"]:#EXIT LOGIC STARTS HERE
-                if not pending_order_logged:  # Print only once
-                    log_and_print(f"🚨 Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
-                    send_whatsapp_message(f"🚨{current_date}: Order {trade_order_id} is not EXECUTED yet. Skipping exit orders.")
-                    pending_order_logged = True
-                continue
-
-            pending_order_logged = False
-            if not exit_order_logged:  # Print only once
-               log_and_print(f"✅ Order {trade_order_id} is executed. Proceeding with exit orders.")
-               send_whatsapp_message(f"✅{current_date}: Order {trade_order_id} is executed. Proceeding with exit orders.")
-               exit_order_logged = True
-
             trade_symbol = ce_symbol if active_trade == "CE" else pe_symbol
             trade_symbol_token = ce_symbol_token if active_trade == "CE" else pe_symbol_token
             trade_ltp = get_ltp(trade_symbol, trade_symbol_token)
-            if order_type_placed == "MARKET" and entry_price is None:
-                entry_price = get_executed_price(trade_order_id)
-            else:
-                entry_price = high_ce + 0.20 if active_trade == "CE" else high_pe + 0.20
-            target_price_trigger = round(round((entry_price * 1.15) / 0.05) * 0.05, 2)
+            target_price_trigger = round(round((entry_price * 1.18) / 0.05) * 0.05, 2)
             target_price = "{:.2f}".format(target_price_trigger)
             stop_loss_price_trigger = round(round((entry_price * 0.90) / 0.05) * 0.05, 2)
             stop_loss_price = "{:.2f}".format(stop_loss_price_trigger)
@@ -475,9 +654,9 @@ def run_strategy():
                     stop_loss_order_id = None
                 if trade_ltp >= target_price_trigger:
                     log_and_print(f"🎯 Target price {target_price_trigger} already breached. Placing immediate MARKET SELL.")
-                    place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
-                    send_whatsapp_message(f"🎯{current_date}: Target breached. Exiting immediately at Market for {trade_symbol}.")
-                    break
+                    target_order_id = place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
+                    if target_order_id:
+                        send_whatsapp_message(f"🎯{current_date}: Target breached. Exiting immediately at Market for {trade_symbol}.")
                 else:
                     log_and_print(f"🎯 Placing Target Order at {target_price}")
                     target_order_id = place_order(trade_symbol, "SELL", quantity_buy, target_price, trade_symbol_token,"STOPLOSS_LIMIT")
@@ -491,33 +670,52 @@ def run_strategy():
                     target_order_id = None  # Reset target order ID
                 if trade_ltp <= stop_loss_price_trigger:
                     log_and_print(f"🛑 Stop Loss price {stop_loss_price_trigger} breached. Placing immediate MARKET SELL.")
-                    place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
-                    send_whatsapp_message(f"🛑{current_date}: Stop Loss breached. Exiting immediately at Market for {trade_symbol}.")
-                    break
+                    stop_loss_order_id = place_order(trade_symbol, "SELL", quantity_buy, None, trade_symbol_token, "MARKET")
+                    if stop_loss_order_id:
+                        send_whatsapp_message(f"🛑{current_date}: Stop Loss breached. Exiting immediately at Market for {trade_symbol}.")
                 else:
                     log_and_print(f"🛑 Placing Stop Loss STOPLOSS_LIMIT Order at {stop_loss_price}")
                     stop_loss_order_id = place_order(trade_symbol, "SELL", quantity_buy, stop_loss_price, trade_symbol_token,"STOPLOSS_LIMIT")
                     send_whatsapp_message(f"❌{current_date}:Cancelling Target Order and placing the SL order {trade_symbol} for price : {stop_loss_price} ")
 
             # Exit if target is hit
-            if trade_ltp >= target_price_trigger:
-                log_and_print(f"✅ Target reached, exiting at {trade_ltp}")
-                send_whatsapp_message(f"✅{current_date}: Target reached, exiting at {trade_ltp} for {trade_symbol}")
-                break
+            if target_order_id:
+                target_status = get_order_status_from_book(target_order_id)
+                if target_status in ["complete", "executed"]:
+                    log_and_print(f"✅ Target reached, exiting at {trade_ltp}")
+                    send_whatsapp_message(f"✅{current_date}: Target reached, exiting at Target: {target_price} and current LTP: {trade_ltp} for {trade_symbol}")
+                    if should_stop_ec2_on_exit:
+                        log_and_print("Shutting down EC2 instance")
+                        trigger_ec2_shutdown_lambda()
+                    break
+                elif trade_ltp >= target_price_trigger:
+                    send_whatsapp_message(f"✅ !!!!!1Target reached at {trade_ltp}. But the order is not yet executed. Check FAASSTTTT")
+                    break
 
             # Exit if stop-loss is hit
-            elif trade_ltp <= stop_loss_price_trigger:
-                log_and_print(f"✅ Stop Loss triggered, exiting at {trade_ltp}")
-                send_whatsapp_message(f"✅{current_date}: Stop Loss triggered, exiting at {trade_ltp} for {trade_symbol}")
-                break
-
+            elif stop_loss_order_id:
+                sl_status = get_order_status_from_book(stop_loss_order_id)
+                if sl_status in ["complete", "executed"]:
+                    log_and_print(f"✅ Stop Loss triggered, exiting at {trade_ltp}")
+                    send_whatsapp_message(f"✅{current_date}: Stop Loss triggered, exiting at SL: {stop_loss_price} and current LTP: {trade_ltp} for {trade_symbol}")
+                    if should_stop_ec2_on_exit:
+                        log_and_print("Shutting down EC2 instance")
+                        trigger_ec2_shutdown_lambda()
+                    break
+                elif trade_ltp <= stop_loss_price_trigger:
+                    send_whatsapp_message(f"✅ !!!!!SL reached at {trade_ltp}. But the order is not yet executed. Check FAASSTTTT")
+                    break
 
 # Main execution
 if __name__ == "__main__":
     try:
+        log_and_print(f"job is running on {system_platform}")
         if is_market_holiday():
             send_whatsapp_message(f"🔔:Market holiday on {current_date}. Exiting script.")
             log_and_print(f"Market holiday on {current_date}. Exiting script.")
+            if should_stop_ec2_on_exit:
+                log_and_print("Shutting down EC2 instance due to market holiday")
+                trigger_ec2_shutdown_lambda()
         else:
             run_strategy()
     except Exception as e:
