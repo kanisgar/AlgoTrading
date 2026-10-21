@@ -9,7 +9,7 @@ import time
 
 # ------------------ Config (edit only if needed) ------------------ #
 # Telegram
-BOT_TOKEN = "8313800040:AAFbD8M5e6g8OF2SlGJzgfM9c9oyfZyah6c"
+BOT_TOKEN = "8966822584:AAH-xTYBtggYADebJHeX8RF-IA0NGl9jpe8"
 CHAT_IDS = ["632084234"]
 
 # Accounts (two)
